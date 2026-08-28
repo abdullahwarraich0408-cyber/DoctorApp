@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>MedCare Tab Screens and Functionality</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown.min.css" />
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">MedCare Tab Screens and Functionality</h1>
+</header>
+<h1 id="medcare-app-tab-screens-functionality">MedCare App — Tab Screens
+&amp; Functionality</h1>
+<p>This document describes the layout, navigation, and functionality of
+all main bottom tabs in the MedCare mobile app.</p>
+<p><strong>App path:</strong> <code>app/medCare/</code><br />
+<strong>Last updated:</strong> July 2026</p>
+<hr />
+<h2 id="bottom-navigation-overview">Bottom navigation overview</h2>
+<table>
+<colgroup>
+<col style="width: 16%" />
+<col style="width: 19%" />
+<col style="width: 41%" />
+<col style="width: 22%" />
+</colgroup>
+<thead>
+<tr>
+<th>Tab</th>
+<th>Icon</th>
+<th>Root screen</th>
+<th>Stack</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Home</strong></td>
+<td><code>home</code></td>
+<td><code>HealthDashboardPage</code></td>
+<td><code>HomeStack</code></td>
+</tr>
+<tr>
+<td><strong>Health</strong></td>
+<td><code>heart-pulse</code></td>
+<td><code>HealthHomePage</code></td>
+<td><code>HealthStack</code></td>
+</tr>
+<tr>
+<td><strong>Copilot</strong></td>
+<td><code>robot</code> (center)</td>
+<td><code>CopilotHome</code></td>
+<td><code>CopilotStack</code></td>
+</tr>
+<tr>
+<td><strong>Community</strong></td>
+<td><code>account-group</code></td>
+<td><code>CommunityHomeScreen</code></td>
+<td><code>CommunityStack</code></td>
+</tr>
+<tr>
+<td><strong>You</strong></td>
+<td><code>account</code></td>
+<td><code>AccountHomeScreen</code></td>
+<td><code>YouStack</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h1 id="home-tab">1. Home Tab</h1>
+<p><strong>Bottom tab:</strong> 1st tab — <strong>Home</strong><br />
+<strong>Root screen:</strong> <code>HealthDashboardPage</code> (main
+dashboard)<br />
+<strong>Stack:</strong> <code>HomeStack</code> → Dashboard, ServicesHub,
+Services</p>
+<h2 id="main-dashboard-layout-top-bottom">Main dashboard layout (top →
+bottom)</h2>
+<h3 id="header">1. Header</h3>
+<ul>
+<li>Greeting: <strong>“Hi {firstName} 👋”</strong></li>
+<li>Subtitle: “Your health hub is ready”</li>
+<li><strong>Bell icon</strong> → Notifications (You tab)</li>
+<li>Long-press bell → send test push notification</li>
+</ul>
+<h3 id="search-bar">2. Search bar</h3>
+<ul>
+<li>Placeholder: “Search doctors, medicines, lab tests…”</li>
+<li>Submit/search tap → <strong>Health → Medicines List</strong></li>
+</ul>
+<h3 id="quick-care-services-22-grid">3. Quick care services (2×2
+grid)</h3>
+<table>
+<thead>
+<tr>
+<th>Tile</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Doctors</strong></td>
+<td>Services → Doctors list</td>
+</tr>
+<tr>
+<td><strong>Lab Tests</strong></td>
+<td>Services → Lab tests list</td>
+</tr>
+<tr>
+<td><strong>Medicines</strong></td>
+<td>Drawer → Pharmacies</td>
+</tr>
+<tr>
+<td><strong>Hospitals</strong></td>
+<td>Services → Hospitals list</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ai-health-copilot-banner">4. AI Health Copilot banner</h3>
+<ul>
+<li>Personalized AI summary (or default message)</li>
+<li><strong>View Briefing</strong> → Copilot tab</li>
+</ul>
+<h3 id="needs-your-attention">5. Needs your attention</h3>
+<p>Dynamic list based on live data: - <strong>Medicines</strong> →
+Health → Medicines - <strong>Lab Reports</strong> → Health → Reports -
+<strong>Appointments</strong> → You → Orders</p>
+<h3 id="offers-promo-carousel">6. Offers (promo carousel)</h3>
+<p>Swipeable banners: - 25% OFF Medicines → Health → Medicines - Consult
+Top Doctors → Services → Doctors - Lab Tests at Home → Services → Lab
+tests - Hospital Care → Services → Hospitals</p>
+<h3 id="recommended-for-you">7. Recommended for you</h3>
+<p>Tabbed section: <strong>Doctors | Labs | Pharmacies |
+Hospitals</strong> - Cards from API (doctors, lab packages, pharmacies,
+hospitals) - <strong>See all</strong> per tab - Tap card → doctor
+profile, lab test, pharmacy detail, or hospital detail</p>
+<p><strong>Pull-to-refresh</strong> reloads health data, home
+recommendations, and gamification profile.</p>
+<h2 id="sub-screens-from-home">Sub-screens from Home</h2>
+<table>
+<colgroup>
+<col style="width: 47%" />
+<col style="width: 52%" />
+</colgroup>
+<thead>
+<tr>
+<th>Screen</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Services Hub</strong></td>
+<td>Directory: Doctors, Lab tests, Specialists, Health packages,
+Hospitals, Medicines link</td>
+</tr>
+<tr>
+<td><strong>Services stack</strong></td>
+<td>Full consult flow: doctors, hospitals, lab tests, bookings, health
+packages</td>
+</tr>
+</tbody>
+</table>
+<h2 id="data-live-vs-static">Data: live vs static</h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Doctors, pharmacies, hospitals, lab packages</td>
+<td>API (live)</td>
+</tr>
+<tr>
+<td>Attention items</td>
+<td>Health dashboard (live when logged in)</td>
+</tr>
+<tr>
+<td>Promo banners</td>
+<td>Static config</td>
+</tr>
+<tr>
+<td>Recommended fallback</td>
+<td>Mock data if API empty</td>
+</tr>
+</tbody>
+</table>
+<h2 id="auth">Auth</h2>
+<ul>
+<li>Works for guests; richer data when logged in</li>
+</ul>
+<hr />
+<h1 id="health-tab">2. Health Tab</h1>
+<p><strong>Bottom tab:</strong> 2nd tab — <strong>Health</strong><br />
+<strong>Root screen:</strong> <code>HealthHomePage</code> —
+<strong>“Your Health Hub”</strong><br />
+<strong>Stack:</strong> <code>HealthStack</code></p>
+<h2 id="health-hub-layout-top-bottom">Health Hub layout (top →
+bottom)</h2>
+<h3 id="page-header">1. Page header</h3>
+<ul>
+<li><strong>Title:</strong> “Your Health Hub”</li>
+<li><strong>Subtitle:</strong> “Track records, reports, prescriptions,
+and family health in one place”</li>
+</ul>
+<h3 id="health-overview-hero-card">2. Health Overview hero card</h3>
+<ul>
+<li>Health score</li>
+<li>Prescriptions count</li>
+<li>New reports count</li>
+<li>Family member count</li>
+<li>Next visit (from upcoming lab bookings)</li>
+</ul>
+<h3 id="quick-action-grid-22">3. Quick action grid (2×2)</h3>
+<table>
+<thead>
+<tr>
+<th>Tile</th>
+<th>Goes to</th>
+<th>Badge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Reports</strong></td>
+<td>Lab Reports</td>
+<td>e.g. “1 new report”</td>
+</tr>
+<tr>
+<td><strong>Medical Records</strong></td>
+<td>Medical Records</td>
+<td>“Secure vault”</td>
+</tr>
+<tr>
+<td><strong>Prescriptions</strong></td>
+<td>Medicines list</td>
+<td>e.g. “2 active”</td>
+</tr>
+<tr>
+<td><strong>Family Vault</strong></td>
+<td>Family Profiles</td>
+<td>e.g. “3 members”</td>
+</tr>
+</tbody>
+</table>
+<h3 id="needs-attention">4. Needs attention</h3>
+<p>Actionable alerts (currently static demo data): - CBC report ready →
+Reports - 2 medicines due today → Medicines - Family follow-up tomorrow
+→ Family Vault</p>
+<h3 id="recent-activity">5. Recent activity</h3>
+<p>Timeline (currently static demo data): - Lab test completed -
+Prescription uploaded - Appointment booked</p>
+<h3 id="family-health-preview">6. Family health preview</h3>
+<ul>
+<li>Horizontal cards for up to 3 family members</li>
+<li><strong>View Family Vault</strong> → Family Profiles</li>
+<li>Tap member → member detail</li>
+</ul>
+<h2 id="sub-screens">Sub-screens</h2>
+<h3 id="reports-labreports-auth-required">Reports
+(<code>LabReports</code>) — Auth required</h3>
+<ul>
+<li>Summary: total reports, latest report, last updated</li>
+<li><strong>Track trends</strong> — HbA1c trend chart when enough
+data</li>
+<li><strong>Recent reports</strong> — list from lab API</li>
+<li>Empty state → <strong>Book a Lab Test</strong> (Services tab)</li>
+</ul>
+<h3 id="medical-records-medicalrecords-auth-required">Medical Records
+(<code>MedicalRecords</code>) — Auth required</h3>
+<ul>
+<li>Unified document vault (lab, orders, manual uploads)</li>
+<li>Search bar</li>
+<li><strong>Category chips:</strong> All, Lab Reports, Prescriptions,
+Doctor Visits, Discharge, Vaccination, Imaging</li>
+<li>Upload new documents</li>
+<li>Tap record → view, booking details, delete manual uploads</li>
+<li>Pull-to-refresh</li>
+</ul>
+<h3 id="prescriptions-medicines-medicineslist">Prescriptions &amp;
+Medicines (<code>MedicinesList</code>)</h3>
+<ul>
+<li>Prescriptions summary card</li>
+<li>Upload prescription banner</li>
+<li>Search + segments: Active, Refill, OTC, Supplements</li>
+<li>Medicine list from API</li>
+<li>Product Detail → Cart → Checkout</li>
+</ul>
+<h3 id="family-vault-familyprofiles-auth-required">Family Vault
+(<code>FamilyProfiles</code>) — Auth required</h3>
+<ul>
+<li>Create family vault (if none)</li>
+<li>Summary card, add member</li>
+<li><strong>4 tabs:</strong> Overview | Calendar | Copilot |
+Summary</li>
+<li>Add member modal</li>
+<li>Tap member → Family Member Detail</li>
+</ul>
+<h3 id="family-member-detail-familymemberdetail-auth-required">Family
+Member Detail (<code>FamilyMemberDetail</code>) — Auth required</h3>
+<ul>
+<li><strong>Prescriptions:</strong> upload photo, OCR extract,
+delete</li>
+<li><strong>Medicines:</strong> saved/extracted list</li>
+<li><strong>Vitals:</strong> log BP, sugar, weight, heart rate, SpO2;
+trends</li>
+</ul>
+<h3 id="health-history-healthhistory-auth-required">Health History
+(<code>HealthHistory</code>) — Auth required</h3>
+<ul>
+<li>Registered in navigation but <strong>not linked from Health Hub
+UI</strong></li>
+<li>Blood group, member since, DOB</li>
+<li>Monthly healthcare timeline</li>
+</ul>
+<h2 id="data-live-vs-static-1">Data: live vs static</h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Health score</td>
+<td>Gamification profile (live)</td>
+</tr>
+<tr>
+<td>Lab reports &amp; trends</td>
+<td>Backend API (live)</td>
+</tr>
+<tr>
+<td>Medical records</td>
+<td>API + uploads (live)</td>
+</tr>
+<tr>
+<td>Medicines list</td>
+<td>Products API (live)</td>
+</tr>
+<tr>
+<td>Family vault</td>
+<td>Family vault API (live)</td>
+</tr>
+<tr>
+<td>Active prescriptions count</td>
+<td>Hardcoded (2)</td>
+</tr>
+<tr>
+<td>Needs attention</td>
+<td>Static demo</td>
+</tr>
+<tr>
+<td>Recent activity</td>
+<td>Static demo</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h1 id="community-tab">3. Community Tab</h1>
+<p><strong>Bottom tab:</strong> 4th tab —
+<strong>Community</strong><br />
+<strong>Root screen:</strong> <code>CommunityHomeScreen</code><br />
+<strong>Provider:</strong> <code>CommunityProvider</code> (live API +
+mock fallback)</p>
+<h2 id="main-screen-layout">Main screen layout</h2>
+<h3 id="header-1">Header</h3>
+<ul>
+<li>Title: <strong>Community</strong></li>
+<li><strong>“Live community”</strong> badge when API connected</li>
+<li><strong>+ button</strong> → Create post (auth required)</li>
+</ul>
+<h3 id="segment-tabs-feed-challenges-groups-you">4 segment tabs: Feed |
+Challenges | Groups | You</h3>
+<h4 id="feed">Feed</h4>
+<ul>
+<li><strong>Filters:</strong> All, Videos, Verified, Friends</li>
+<li>Up to 6 post cards</li>
+<li>Tap → Post Detail; like from feed</li>
+<li>Pull-to-refresh</li>
+</ul>
+<h4 id="challenges">Challenges</h4>
+<ul>
+<li><strong>+ Create challenge</strong></li>
+<li>Your challenges (joined)</li>
+<li>Discover more / All challenges</li>
+<li>Tap → Challenge Detail</li>
+</ul>
+<h4 id="groups">Groups</h4>
+<ul>
+<li><strong>+ Create group</strong></li>
+<li>Group cards (join/leave)</li>
+<li>Tap → Group Detail</li>
+</ul>
+<h4 id="you-community-profile">You (community profile)</h4>
+<ul>
+<li><strong>Health buddies</strong> → Buddies</li>
+<li><strong>Weekly health report</strong> → Weekly Report</li>
+<li>Note: streaks/badges on Home tab</li>
+</ul>
+<p><strong>Guests:</strong> warning to sign in for post/group/challenge
+actions.</p>
+<h2 id="sub-screens-1">Sub-screens</h2>
+<table>
+<thead>
+<tr>
+<th>Screen</th>
+<th>Features</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Post Detail</strong></td>
+<td>Full post, media, like, comments</td>
+</tr>
+<tr>
+<td><strong>Create Post</strong></td>
+<td>Text or video (optional group)</td>
+</tr>
+<tr>
+<td><strong>Challenge Detail</strong></td>
+<td>Progress, join/leave, log progress</td>
+</tr>
+<tr>
+<td><strong>Group Detail</strong></td>
+<td>Discussions + Members, join, add members</td>
+</tr>
+<tr>
+<td><strong>Create Group</strong></td>
+<td>New health group</td>
+</tr>
+<tr>
+<td><strong>Create Challenge</strong></td>
+<td>New wellness challenge</td>
+</tr>
+<tr>
+<td><strong>Add Group Member</strong></td>
+<td>Invite/add to group</td>
+</tr>
+<tr>
+<td><strong>Buddies</strong></td>
+<td>Manage health buddies</td>
+</tr>
+<tr>
+<td><strong>Add Buddy</strong></td>
+<td>Add a buddy</td>
+</tr>
+<tr>
+<td><strong>Weekly Report</strong></td>
+<td>Weekly progress view/share</td>
+</tr>
+</tbody>
+</table>
+<h2 id="data">Data</h2>
+<ul>
+<li>Posts, groups, challenges from API when authenticated</li>
+<li>Mock fallback when API unavailable</li>
+</ul>
+<hr />
+<h1 id="you-tab">4. You Tab</h1>
+<p><strong>Bottom tab:</strong> 5th tab — <strong>You</strong><br />
+<strong>Root screen:</strong> <code>AccountHomeScreen</code>
+(<code>YouHome</code>)<br />
+<strong>Modes:</strong> Guest vs Logged-in</p>
+<h2 id="guest-layout">Guest layout</h2>
+<ul>
+<li>Guest welcome message</li>
+<li><strong>Sign in with phone</strong></li>
+<li><strong>Create account</strong></li>
+<li><strong>Browse without signing in:</strong>
+<ul>
+<li>Lab Tests</li>
+<li>Healthcare Services</li>
+<li>My Orders</li>
+</ul></li>
+</ul>
+<p><strong>Auth screens:</strong> Phone Sign In, OTP Verify, Sign In,
+Register, Forgot Password</p>
+<h2 id="logged-in-layout-top-bottom">Logged-in layout (top →
+bottom)</h2>
+<h3 id="profile-hero-card">1. Profile hero card</h3>
+<ul>
+<li>Name, family health score, member count</li>
+<li>Tap → <strong>Profile</strong></li>
+</ul>
+<h3 id="quick-actions-4-tiles">2. Quick actions (4 tiles)</h3>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Goes to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>My Orders</td>
+<td>Orders list</td>
+</tr>
+<tr>
+<td>Appointments</td>
+<td>Orders list</td>
+</tr>
+<tr>
+<td>Lab Reports</td>
+<td>Health → Reports</td>
+</tr>
+<tr>
+<td>Family Members</td>
+<td>Health → Family Vault</td>
+</tr>
+</tbody>
+</table>
+<h3 id="health-summary-card">3. Health summary card</h3>
+<ul>
+<li>Medicines due, reports ready, upcoming visit</li>
+</ul>
+<h3 id="account-settings">4. Account settings</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Screen</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Addresses</td>
+<td>Saved addresses</td>
+</tr>
+<tr>
+<td>Payments</td>
+<td>Payment methods</td>
+</tr>
+<tr>
+<td>Notifications</td>
+<td>Push prefs + recent list</td>
+</tr>
+<tr>
+<td>Privacy &amp; Security</td>
+<td>Settings</td>
+</tr>
+<tr>
+<td>Support</td>
+<td>Help center</td>
+</tr>
+</tbody>
+</table>
+<h3 id="more-services">5. More services</h3>
+<ul>
+<li>Lab Tests → Home Services</li>
+<li>Healthcare Services → Services Hub</li>
+</ul>
+<h3 id="emergency-support-strip">6. Emergency support strip</h3>
+<ul>
+<li>Opens Copilot with emergency prompt</li>
+</ul>
+<h3 id="sign-out">7. Sign out</h3>
+<h2 id="sub-screens-2">Sub-screens</h2>
+<table>
+<colgroup>
+<col style="width: 44%" />
+<col style="width: 55%" />
+</colgroup>
+<thead>
+<tr>
+<th>Screen</th>
+<th>Features</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Profile</strong></td>
+<td>Personal info, blood group, health summary</td>
+</tr>
+<tr>
+<td><strong>Orders List</strong></td>
+<td>Filters: All, Meds, Labs, Doctors, Hospital, Rx; live tracking</td>
+</tr>
+<tr>
+<td><strong>Order Detail</strong></td>
+<td>Status, items, tracking</td>
+</tr>
+<tr>
+<td><strong>Appointment Chat</strong></td>
+<td>Doctor messaging</td>
+</tr>
+<tr>
+<td><strong>Addresses</strong></td>
+<td>Manage addresses</td>
+</tr>
+<tr>
+<td><strong>Payments</strong></td>
+<td>Payment methods</td>
+</tr>
+<tr>
+<td><strong>Notifications</strong></td>
+<td>Enable push, test push, prefs, recent list</td>
+</tr>
+<tr>
+<td><strong>Settings</strong></td>
+<td>Privacy, security, profile</td>
+</tr>
+<tr>
+<td><strong>Support</strong></td>
+<td>Contact, FAQs</td>
+</tr>
+</tbody>
+</table>
+<h2 id="data-1">Data</h2>
+<ul>
+<li>Profile, orders, family vault, notifications when logged in</li>
+<li>Guest browse only without auth</li>
+</ul>
+<hr />
+<h1 id="navigation-map-all-tabs">Navigation map (all tabs)</h1>
+<pre><code>HOME                          HEALTH                        COMMUNITY
+├── Dashboard                 ├── Health Hub                ├── Feed
+│   ├── Header + notifs       │   ├── Overview card         ├── Challenges
+│   ├── Search                │   ├── Quick actions         ├── Groups
+│   ├── Services grid         │   ├── Needs attention       └── You
+│   ├── Copilot banner        │   ├── Recent activity             │
+│   ├── Attention list        │   └── Family preview            ├── Post Detail
+│   ├── Promo carousel        ├── Reports                       ├── Challenge Detail
+│   └── Recommended tabs      ├── Medical Records               ├── Group Detail
+├── Services Hub              ├── Medicines → Cart              └── Buddies / Report
+└── Services                  ├── Family Vault
+                              └── Family Member Detail
+
+YOU
+├── Guest: Sign in / Register / Browse
+└── Logged in:
+    ├── Profile hero
+    ├── Quick actions
+    ├── Health summary
+    ├── Settings group
+    ├── More services
+    ├── Emergency
+    ├── Orders / Profile / Notifications / etc.
+    └── Sign out</code></pre>
+<hr />
+<h1 id="key-source-files">Key source files</h1>
+<table>
+<colgroup>
+<col style="width: 29%" />
+<col style="width: 70%" />
+</colgroup>
+<thead>
+<tr>
+<th>Tab</th>
+<th>Main files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Home</td>
+<td><code>src/features/dashboard/HealthDashboardPage.tsx</code>,
+<code>src/navigation/HomeStack.tsx</code></td>
+</tr>
+<tr>
+<td>Health</td>
+<td><code>src/features/health/HealthHomePage.tsx</code>,
+<code>src/navigation/HealthStack.tsx</code></td>
+</tr>
+<tr>
+<td>Community</td>
+<td><code>src/features/community/CommunityHomeScreen.tsx</code>,
+<code>src/navigation/CommunityStack.tsx</code></td>
+</tr>
+<tr>
+<td>You</td>
+<td><code>src/features/account/screens/AccountHomeScreen.tsx</code>,
+<code>src/navigation/YouStack.tsx</code></td>
+</tr>
+<tr>
+<td>Tabs</td>
+<td><code>src/components/navigation/BottomTabBar.tsx</code>,
+<code>src/navigation/types.ts</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h1 id="auth-summary">Auth summary</h1>
+<table>
+<thead>
+<tr>
+<th>Tab</th>
+<th>Guest access</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Home</td>
+<td>Full browse; richer when logged in</td>
+</tr>
+<tr>
+<td>Health</td>
+<td>Hub open; sub-screens mostly require login</td>
+</tr>
+<tr>
+<td>Community</td>
+<td>Read feed; sign in to post/join/create</td>
+</tr>
+<tr>
+<td>You</td>
+<td>Limited; full account needs login</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
