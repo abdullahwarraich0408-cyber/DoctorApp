@@ -11,6 +11,7 @@ import {
   Image,
   Modal,
   TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -23,13 +24,11 @@ import {
   Video,
   Building,
   Check,
-  CheckCircle2,
   CalendarCheck,
   MessageSquare,
   Folder,
   XCircle,
   Copy,
-  ChevronRight,
   ShieldCheck,
   X,
   FileText,
@@ -37,7 +36,7 @@ import {
 import { doctorPortalApi } from '../../lib/api';
 import { mapAppointment } from '../../lib/mappers/doctorPortal';
 import { StatusChip } from '../../components/StatusChip';
-import { colors, radius, spacing, shadows, TAB_BAR_CLEARANCE } from '../../theme';
+import { colors, radius, shadows, TAB_BAR_CLEARANCE } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 
 export function AppointmentDetailScreen() {
@@ -135,7 +134,7 @@ export function AppointmentDetailScreen() {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
-      {/* Deep Teal Header */}
+      {/* Header Bar */}
       <View style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
         <View style={styles.headerRow}>
           <Pressable
@@ -147,14 +146,21 @@ export function AppointmentDetailScreen() {
           </Pressable>
 
           <Text style={styles.headerTitle}>Appointment Details</Text>
-          <View style={{ width: 40 }} />
+          <StatusChip status={appointment.status} />
         </View>
       </View>
 
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}>
-        {/* Patient Summary Card */}
+        showsVerticalScrollIndicator={false}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={true}>
+        
+        {/* Patient Profile Card */}
         <View style={styles.patientCard}>
           <View style={styles.patientCardLeft}>
             <Image
@@ -174,7 +180,7 @@ export function AppointmentDetailScreen() {
               </Text>
 
               <View style={styles.appointmentTimeRow}>
-                <Calendar size={12} color={colors.primary} strokeWidth={2} />
+                <Calendar size={13} color={colors.primary} strokeWidth={2} />
                 <Text style={styles.appointmentTimeText}>
                   {appointment.date || 'Today, May 14, 2025'} • {appointment.time}
                 </Text>
@@ -185,22 +191,22 @@ export function AppointmentDetailScreen() {
           <View style={styles.modeBadgeWrap}>
             <View style={styles.modePill}>
               {isVideo ? (
-                <Video size={12} color={colors.primary} strokeWidth={2} />
+                <Video size={12} color={colors.primary} strokeWidth={2.2} />
               ) : (
-                <Building size={12} color={colors.primary} strokeWidth={2} />
+                <Building size={12} color={colors.primary} strokeWidth={2.2} />
               )}
               <Text style={styles.modePillText}>{appointment.type}</Text>
             </View>
           </View>
         </View>
 
-        {/* Appointment Lifecycle Stepper */}
+        {/* Progress Stepper */}
         <View style={styles.stepperCard}>
           <View style={styles.stepperRow}>
             {/* Step 1: Booked */}
             <View style={styles.stepCol}>
               <View style={[styles.stepCircle, styles.stepCircleCompleted]}>
-                <Check size={12} color="#FFFFFF" strokeWidth={3} />
+                <Check size={11} color="#FFFFFF" strokeWidth={3} />
               </View>
               <Text style={styles.stepTitle}>Booked</Text>
               <Text style={styles.stepTime}>May 13, 9:15 PM</Text>
@@ -243,126 +249,112 @@ export function AppointmentDetailScreen() {
           </View>
         </View>
 
-        {/* Grouped Clinical Information */}
-        <View style={styles.clinicalGroupCard}>
-          {/* Chief Complaint */}
-          <View style={styles.clinicalSection}>
-            <Text style={styles.sectionLabel}>Chief Complaint</Text>
-            <Text style={styles.sectionBodyText}>{appointment.complaint}</Text>
-          </View>
+        {/* Clinical Summary Card */}
+        <View style={styles.clinicalCard}>
+          <Text style={styles.cardHeaderTitle}>CLINICAL SUMMARY</Text>
 
-          <View style={styles.clinicalDivider} />
+          {/* Chief Complaint */}
+          <View style={styles.clinicalBox}>
+            <Text style={styles.boxLabel}>Chief Complaint</Text>
+            <Text style={styles.boxValueText}>{appointment.complaint}</Text>
+          </View>
 
           {/* Symptoms */}
-          <Pressable
-            style={styles.clinicalSectionRow}
-            onPress={() =>
-              Alert.alert('Symptoms', appointment.symptoms.join(', '))
-            }>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionLabel}>Symptoms</Text>
-              <Text style={styles.sectionBodyText}>
-                {appointment.symptoms.join(', ')}
-              </Text>
+          <View style={styles.symptomsContainer}>
+            <Text style={styles.boxLabel}>Reported Symptoms</Text>
+            <View style={styles.symptomsPillsRow}>
+              {appointment.symptoms.map((symptom: string, idx: number) => (
+                <View key={idx} style={styles.symptomPill}>
+                  <Text style={styles.symptomPillText}>{symptom}</Text>
+                </View>
+              ))}
             </View>
-            <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
-          </Pressable>
-
-          <View style={styles.clinicalDivider} />
-
-          {/* Appointment Timeline */}
-          <View style={styles.clinicalSection}>
-            <Text style={styles.sectionLabel}>Appointment Timeline</Text>
-            <Text style={styles.sectionBodyText}>{appointment.timeRange}</Text>
           </View>
 
-          <View style={styles.clinicalDivider} />
-
-          {/* Consultation Notes */}
-          <Pressable
-            style={styles.clinicalSectionRow}
-            onPress={() =>
-              navigation.navigate('Consultation', {
-                appointmentId: appointment.id,
-                patientName: appointment.patient,
-              })
-            }>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionLabel}>Consultation Notes</Text>
-              <Text style={[styles.sectionBodyText, { color: colors.textMuted }]}>
-                {appointment.notes}
-              </Text>
+          {/* Timeline & Notes */}
+          <View style={styles.clinicalSubRow}>
+            <View style={styles.subCol}>
+              <Text style={styles.boxLabel}>Duration</Text>
+              <View style={styles.inlineMetaRow}>
+                <Clock size={13} color={colors.primary} strokeWidth={2} />
+                <Text style={styles.inlineMetaText}>{appointment.timeRange}</Text>
+              </View>
             </View>
-            <FileText size={18} color={colors.primary} strokeWidth={2} />
-          </Pressable>
+
+            <Pressable
+              style={styles.subCol}
+              onPress={() =>
+                navigation.navigate('Consultation', {
+                  appointmentId: appointment.id,
+                  patientName: appointment.patient,
+                })
+              }>
+              <Text style={styles.boxLabel}>Notes</Text>
+              <View style={styles.inlineMetaRow}>
+                <FileText size={13} color={colors.primary} strokeWidth={2} />
+                <Text style={styles.inlineNotesLink}>View Clinical Notes &gt;</Text>
+              </View>
+            </Pressable>
+          </View>
         </View>
 
         {/* Side-by-Side Information Cards */}
         <View style={styles.sideBySideRow}>
-          {/* Payment Details Card */}
+          {/* Payment Card */}
           <View style={styles.halfCard}>
-            <Text style={styles.halfCardTitle}>Payment Details</Text>
-            <View style={styles.halfCardContent}>
-              <Text style={styles.feeSubLabel}>Consultation Fee</Text>
-              <Text style={styles.feeMainVal}>{appointment.fee}</Text>
+            <Text style={styles.halfCardTitle}>PAYMENT DETAILS</Text>
+            <Text style={styles.feeSubLabel}>Consultation Fee</Text>
+            <Text style={styles.feeMainVal}>{appointment.fee}</Text>
 
-              <View style={styles.paidStatusRow}>
-                <Text style={styles.paidText}>Paid {appointment.paidAmount}</Text>
-                <View style={styles.paidCheckDot}>
-                  <Check size={8} color="#FFFFFF" strokeWidth={3} />
-                </View>
+            <View style={styles.paidStatusRow}>
+              <Text style={styles.paidText}>Paid {appointment.paidAmount}</Text>
+              <View style={styles.paidCheckDot}>
+                <Check size={8} color="#FFFFFF" strokeWidth={3} />
               </View>
             </View>
           </View>
 
-          {/* Appointment Info Card */}
+          {/* Appointment Code Card */}
           <View style={styles.halfCard}>
-            <Text style={styles.halfCardTitle}>Appointment Info</Text>
-            <View style={styles.halfCardContent}>
-              <Text style={styles.feeSubLabel}>Appointment ID</Text>
-              <View style={styles.copyIdRow}>
-                <Text style={styles.idCodeText}>{appointment.appointmentCode}</Text>
-                <Copy size={12} color={colors.primary} strokeWidth={2} />
-              </View>
+            <Text style={styles.halfCardTitle}>APPOINTMENT INFO</Text>
+            <Text style={styles.feeSubLabel}>Appointment ID</Text>
+            <Pressable
+              style={styles.copyIdRow}
+              onPress={() =>
+                Alert.alert(
+                  'Copied ID',
+                  `Appointment Code ${appointment.appointmentCode} copied.`,
+                )
+              }>
+              <Text style={styles.idCodeText}>{appointment.appointmentCode}</Text>
+              <Copy size={12} color={colors.primary} strokeWidth={2} />
+            </Pressable>
 
-              <View style={styles.roomRow}>
-                <Building size={12} color={colors.textMuted} strokeWidth={2} />
-                <Text style={styles.roomText}>{appointment.room}</Text>
-              </View>
+            <View style={styles.roomRow}>
+              <Building size={12} color={colors.textMuted} strokeWidth={2} />
+              <Text style={styles.roomText}>{appointment.room}</Text>
             </View>
           </View>
         </View>
 
-        {/* Clinical Action Buttons */}
+        {/* Actions Section */}
         <View style={styles.actionsSection}>
-          {/* Row 1: Confirm & Start Consultation */}
-          <View style={styles.actionsRow}>
-            {appointment.status !== 'confirmed' && (
-              <Pressable
-                style={styles.confirmBtn}
-                onPress={() => statusMut.mutate('confirmed')}
-                disabled={statusMut.isPending}>
-                <CalendarCheck size={16} color="#FFFFFF" strokeWidth={2.2} />
-                <Text style={styles.confirmBtnText}>Confirm</Text>
-              </Pressable>
-            )}
+          {/* Dominant Start Consultation Button */}
+          <Pressable
+            style={styles.startConsultBtn}
+            onPress={() =>
+              navigation.navigate('Video', {
+                appointmentId: appointment.id,
+              })
+            }>
+            <Video size={18} color="#FFFFFF" strokeWidth={2.2} />
+            <Text style={styles.startConsultBtnText}>Start Consultation</Text>
+          </Pressable>
 
+          {/* Twin Action Row: Chat & View Records */}
+          <View style={styles.twinActionsRow}>
             <Pressable
-              style={styles.startConsultBtn}
-              onPress={() =>
-                navigation.navigate('Video', {
-                  appointmentId: appointment.id,
-                })
-              }>
-              <Video size={16} color="#FFFFFF" strokeWidth={2.2} />
-              <Text style={styles.startConsultBtnText}>Start Consultation</Text>
-            </Pressable>
-          </View>
-
-          {/* Row 2: Open Chat & View Records */}
-          <View style={styles.actionsRow}>
-            <Pressable
-              style={styles.outlineActionBtn}
+              style={styles.twinActionBtn}
               onPress={() =>
                 navigation.navigate('Chat', {
                   appointmentId: appointment.id,
@@ -370,48 +362,62 @@ export function AppointmentDetailScreen() {
                 })
               }>
               <MessageSquare size={16} color={colors.primary} strokeWidth={2} />
-              <Text style={styles.outlineActionBtnText}>Open Chat</Text>
+              <Text style={styles.twinActionBtnText}>Chat</Text>
             </Pressable>
 
             <Pressable
-              style={styles.outlineActionBtn}
+              style={styles.twinActionBtn}
               onPress={() =>
                 navigation.navigate('PatientDetail', {
                   patientId: appointment.id,
                 })
               }>
               <Folder size={16} color={colors.primary} strokeWidth={2} />
-              <Text style={styles.outlineActionBtnText}>View Records</Text>
+              <Text style={styles.twinActionBtnText}>Records</Text>
             </Pressable>
           </View>
 
-          {/* Row 3: Cancel Appointment */}
+          {/* Confirm Button if not confirmed */}
+          {appointment.status !== 'confirmed' && (
+            <Pressable
+              style={styles.confirmBtn}
+              onPress={() => statusMut.mutate('confirmed')}
+              disabled={statusMut.isPending}>
+              <CalendarCheck size={16} color="#FFFFFF" strokeWidth={2.2} />
+              <Text style={styles.confirmBtnText}>Confirm Visit</Text>
+            </Pressable>
+          )}
+
+          {/* Minimal Cancel Button */}
           {appointment.status !== 'cancelled' && (
             <Pressable
-              style={styles.cancelBtn}
+              style={styles.cancelLinkBtn}
               onPress={() => setCancelModalVisible(true)}>
-              <XCircle size={16} color={colors.danger} strokeWidth={2} />
-              <Text style={styles.cancelBtnText}>Cancel with Reason</Text>
+              <XCircle size={14} color={colors.danger} strokeWidth={2} />
+              <Text style={styles.cancelLinkText}>Cancel Appointment</Text>
             </Pressable>
           )}
         </View>
 
-        {/* End-to-End Encryption Banner */}
+        {/* Confidential Security Footer */}
         <View style={styles.securityFooter}>
           <ShieldCheck size={14} color={colors.textMuted} strokeWidth={2} />
           <Text style={styles.securityFooterText}>
-            Secure & Confidential • End-to-end encrypted consultation
+            End-to-end encrypted consultation • Confidential
           </Text>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
-      {/* Cancellation Modal */}
+      {/* Cancellation Reason Modal */}
       <Modal
         visible={cancelModalVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setCancelModalVisible(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Cancel Appointment</Text>
@@ -420,37 +426,45 @@ export function AppointmentDetailScreen() {
               </Pressable>
             </View>
 
-            <Text style={styles.modalSub}>
-              Please provide a clinical reason or message for the patient:
-            </Text>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              automaticallyAdjustKeyboardInsets={true}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+              contentContainerStyle={styles.modalScrollContent}>
+              <Text style={styles.modalSub}>
+                Please provide a clinical reason or message for the patient:
+              </Text>
 
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Doctor emergency or rescheduling request..."
-              placeholderTextColor={colors.textMuted}
-              value={cancelReason}
-              onChangeText={setCancelReason}
-              multiline
-            />
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. Doctor emergency or rescheduling request..."
+                placeholderTextColor={colors.textMuted}
+                value={cancelReason}
+                onChangeText={setCancelReason}
+                multiline
+              />
 
-            <View style={styles.modalButtonsRow}>
-              <Pressable
-                style={styles.modalCancelBtn}
-                onPress={() => setCancelModalVisible(false)}>
-                <Text style={styles.modalCancelBtnText}>Dismiss</Text>
-              </Pressable>
+              <View style={styles.modalButtonsRow}>
+                <Pressable
+                  style={styles.modalCancelBtn}
+                  onPress={() => setCancelModalVisible(false)}>
+                  <Text style={styles.modalCancelBtnText}>Dismiss</Text>
+                </Pressable>
 
-              <Pressable
-                style={styles.modalConfirmCancelBtn}
-                onPress={() => statusMut.mutate('cancelled')}
-                disabled={statusMut.isPending}>
-                <Text style={styles.modalConfirmCancelBtnText}>
-                  {statusMut.isPending ? 'Cancelling...' : 'Confirm Cancel'}
-                </Text>
-              </Pressable>
-            </View>
+                <Pressable
+                  style={styles.modalConfirmCancelBtn}
+                  onPress={() => statusMut.mutate('cancelled')}
+                  disabled={statusMut.isPending}>
+                  <Text style={styles.modalConfirmCancelBtnText}>
+                    {statusMut.isPending ? 'Cancelling...' : 'Confirm Cancel'}
+                  </Text>
+                </Pressable>
+              </View>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -462,8 +476,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 14,
+    paddingHorizontal: 18,
+    paddingTop: 16,
     paddingBottom: TAB_BAR_CLEARANCE + 30,
     gap: 14,
   },
@@ -471,10 +485,10 @@ const styles = StyleSheet.create({
   /* Header Section */
   headerSection: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 20,
-    paddingBottom: 14,
-    borderBottomLeftRadius: radius.xl,
-    borderBottomRightRadius: radius.xl,
+    paddingHorizontal: 18,
+    paddingBottom: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   headerRow: {
     flexDirection: 'row',
@@ -492,14 +506,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
   },
 
   /* Patient Card */
   patientCard: {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: 14,
+    borderRadius: radius.xl,
+    padding: 16,
     borderWidth: 1,
     borderColor: colors.border,
     flexDirection: 'row',
@@ -510,19 +524,19 @@ const styles = StyleSheet.create({
   patientCardLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
     flex: 1,
   },
   patientAvatarImg: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.border,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 2,
+    borderColor: colors.mint,
   },
   patientMetaCol: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
   patientNameRow: {
     flexDirection: 'row',
@@ -530,13 +544,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   patientNameText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.textPrimary,
   },
   patientRolePill: {
     backgroundColor: colors.aqua,
-    paddingHorizontal: 6,
+    paddingHorizontal: 7,
     paddingVertical: 1,
     borderRadius: radius.xs,
   },
@@ -546,15 +560,15 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   demographicsText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '500',
     color: colors.textSecondary,
   },
   appointmentTimeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 1,
+    gap: 5,
+    marginTop: 2,
   },
   appointmentTimeText: {
     fontSize: 11,
@@ -569,12 +583,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     backgroundColor: colors.mint,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radius.xs,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.sm,
   },
   modePillText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.primary,
   },
@@ -584,7 +598,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     paddingVertical: 14,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: colors.border,
     ...shadows.cardSoft,
@@ -652,42 +666,89 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
 
-  /* Clinical Info Group */
-  clinicalGroupCard: {
+  /* Clinical Card */
+  clinicalCard: {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: 14,
+    borderRadius: radius.xl,
+    padding: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 10,
+    gap: 12,
     ...shadows.cardSoft,
   },
-  clinicalSection: {
-    gap: 2,
-  },
-  clinicalSectionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  sectionLabel: {
+  cardHeaderTitle: {
     fontSize: 11,
     fontWeight: '700',
-    color: colors.textSecondary,
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+  },
+  clinicalBox: {
+    backgroundColor: colors.background,
+    borderRadius: radius.md,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 4,
+  },
+  boxLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
-  sectionBodyText: {
-    fontSize: 12,
+  boxValueText: {
+    fontSize: 13,
     color: colors.textPrimary,
-    lineHeight: 16,
+    lineHeight: 18,
+    fontWeight: '500',
   },
-  clinicalDivider: {
-    height: 1,
-    backgroundColor: colors.border,
+  symptomsContainer: {
+    gap: 6,
+  },
+  symptomsPillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  symptomPill: {
+    backgroundColor: colors.aqua,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.mint,
+  },
+  symptomPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  clinicalSubRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 4,
+  },
+  subCol: {
+    gap: 4,
+  },
+  inlineMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  inlineMetaText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  inlineNotesLink: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
   },
 
-  /* Side-by-Side Cards */
+  /* Side-by-Side Half Cards */
   sideBySideRow: {
     flexDirection: 'row',
     gap: 12,
@@ -695,28 +756,26 @@ const styles = StyleSheet.create({
   halfCard: {
     flex: 1,
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: 12,
+    borderRadius: radius.xl,
+    padding: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 6,
+    gap: 4,
     ...shadows.cardSoft,
   },
   halfCardTitle: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-  },
-  halfCardContent: {
-    gap: 2,
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+    marginBottom: 2,
   },
   feeSubLabel: {
     fontSize: 10,
     color: colors.textMuted,
   },
   feeMainVal: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: colors.textPrimary,
   },
@@ -724,10 +783,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 2,
+    marginTop: 3,
   },
   paidText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.success,
   },
@@ -742,10 +801,10 @@ const styles = StyleSheet.create({
   copyIdRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
   },
   idCodeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.primary,
   },
@@ -753,10 +812,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 2,
+    marginTop: 3,
   },
   roomText: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textSecondary,
   },
 
@@ -765,45 +824,29 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 4,
   },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  confirmBtn: {
-    flex: 1,
-    height: 44,
-    borderRadius: radius.md,
-    backgroundColor: colors.primaryLight,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  confirmBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
   startConsultBtn: {
-    flex: 1.4,
-    height: 44,
-    borderRadius: radius.md,
+    height: 48,
+    borderRadius: radius.lg,
     backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    ...shadows.cardSoft,
+    gap: 8,
+    ...shadows.cardElevated,
   },
   startConsultBtnText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  outlineActionBtn: {
+  twinActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  twinActionBtn: {
     flex: 1,
-    height: 42,
-    borderRadius: radius.md,
+    height: 44,
+    borderRadius: radius.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.primary,
@@ -812,25 +855,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
-  outlineActionBtnText: {
-    fontSize: 12,
+  twinActionBtnText: {
+    fontSize: 13,
     fontWeight: '700',
     color: colors.primary,
   },
-  cancelBtn: {
-    height: 42,
-    borderRadius: radius.md,
-    backgroundColor: colors.dangerBg,
-    borderWidth: 1,
-    borderColor: '#FED7D7',
+  confirmBtn: {
+    height: 44,
+    borderRadius: radius.lg,
+    backgroundColor: colors.primaryLight,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
   },
-  cancelBtnText: {
-    fontSize: 12,
+  confirmBtnText: {
+    fontSize: 13,
     fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  cancelLinkBtn: {
+    height: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    marginTop: 2,
+  },
+  cancelLinkText: {
+    fontSize: 12,
+    fontWeight: '600',
     color: colors.danger,
   },
 
@@ -840,7 +894,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    marginTop: 4,
+    marginTop: 2,
   },
   securityFooterText: {
     fontSize: 10,
@@ -858,18 +912,24 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%',
+    maxHeight: '85%',
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: 18,
+    borderRadius: radius.xl,
+    padding: 20,
     gap: 12,
+    ...shadows.cardElevated,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  modalScrollContent: {
+    gap: 12,
+    paddingBottom: 4,
+  },
   modalTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.textPrimary,
   },
@@ -882,10 +942,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    padding: 10,
+    padding: 12,
     fontSize: 12,
     color: colors.textPrimary,
-    minHeight: 70,
+    minHeight: 75,
     textAlignVertical: 'top',
   },
   modalButtonsRow: {
@@ -894,7 +954,7 @@ const styles = StyleSheet.create({
   },
   modalCancelBtn: {
     flex: 1,
-    height: 40,
+    height: 42,
     borderRadius: radius.md,
     backgroundColor: colors.background,
     alignItems: 'center',
@@ -907,7 +967,7 @@ const styles = StyleSheet.create({
   },
   modalConfirmCancelBtn: {
     flex: 1,
-    height: 40,
+    height: 42,
     borderRadius: radius.md,
     backgroundColor: colors.danger,
     alignItems: 'center',

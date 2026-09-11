@@ -13,6 +13,9 @@ import {
   Modal,
   FlatList,
   Image,
+  KeyboardAvoidingView,
+  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
@@ -45,13 +48,20 @@ import {
   HeartPulse,
   Thermometer,
   Wind,
-  Droplets,
-  Calendar,
-  AlertCircle,
+  ShieldCheck,
 } from 'lucide-react-native';
 import { doctorPortalApi } from '../../lib/api';
-import { colors, radius, spacing, shadows } from '../../theme';
+import { colors, radius, shadows } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
+
+const MODAL_SCROLL_MAX = Dimensions.get('window').height * 0.55;
+
+const WORKSPACE_TABS = [
+  { key: 'symptoms' as const, label: 'Vitals', IconComp: Stethoscope },
+  { key: 'diagnosis' as const, label: 'Diagnosis', IconComp: Activity },
+  { key: 'treatment' as const, label: 'Treatment', IconComp: FileText },
+  { key: 'followup' as const, label: 'Follow-up', IconComp: CalendarClock },
+];
 
 type VideoRoute = RouteProp<RootStackParamList, 'Video'>;
 type VideoNav = NativeStackNavigationProp<RootStackParamList>;
@@ -77,15 +87,23 @@ export function VideoConsultScreen() {
   const navigation = useNavigation<VideoNav>();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isCompact = windowWidth < 380;
   const topInset = Math.max(
     insets.top,
     Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   );
   const appointmentId = route.params.appointmentId;
 
+  // Responsive video stage: ~38% on tall phones, clamped for small screens
+  const videoStageHeight = Math.round(
+    Math.min(Math.max(windowHeight * 0.36, 220), windowHeight * 0.42),
+  );
+
   // Active workspace tab: 'symptoms' | 'diagnosis' | 'treatment' | 'followup'
   const [activeTab, setActiveTab] = useState<'symptoms' | 'diagnosis' | 'treatment' | 'followup'>('symptoms');
   const [seconds, setSeconds] = useState(0);
+  const [webViewReady, setWebViewReady] = useState(false);
 
   // Media Controls
   const [isMuted, setIsMuted] = useState(false);
@@ -276,23 +294,56 @@ export function VideoConsultScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#0A1924" />
+      <StatusBar barStyle="light-content" backgroundColor="#07141C" />
 
-      {/* Top Video Stage (~34% height) */}
-      <View style={[styles.videoStage, { paddingTop: topInset }]}>
-        {/* Patient Stream Video Background */}
-        <Image
-          source={{
-            uri: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=800',
-          }}
-          style={styles.patientVideoFeed}
-        />
-        <View style={styles.videoGradientOverlay} />
+      {/* Cinematic Video Stage */}
+      <View style={[styles.videoStage, { height: videoStageHeight, paddingTop: topInset }]}>
+        {url ? (
+          <WebView
+            source={{ uri: url }}
+            style={styles.patientVideoFeed}
+            allowsInlineMediaPlayback
+            mediaPlaybackRequiresUserAction={false}
+            javaScriptEnabled
+            domStorageEnabled
+            startInLoadingState
+            onLoadEnd={() => setWebViewReady(true)}
+            renderLoading={() => (
+              <View style={styles.videoLoadingWrap}>
+                <ActivityIndicator size="large" color={colors.mint} />
+                <Text style={styles.videoLoadingText}>Connecting secure session…</Text>
+              </View>
+            )}
+          />
+        ) : (
+          <>
+            <Image
+              source={{
+                uri: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=800',
+              }}
+              style={styles.patientVideoFeed}
+            />
+            <View style={styles.videoConnectingCard}>
+              {videoQuery.isLoading ? (
+                <ActivityIndicator color={colors.mint} />
+              ) : (
+                <Video size={22} color={colors.mint} strokeWidth={2} />
+              )}
+              <Text style={styles.videoConnectingTitle}>
+                {videoQuery.isLoading ? 'Preparing room' : 'Waiting for video link'}
+              </Text>
+              <Text style={styles.videoConnectingSub}>Secure clinical teleconsult</Text>
+            </View>
+          </>
+        )}
 
-        {/* Top-Bar Overlay: Back / Patient Info / Connection */}
-        <View style={[styles.videoTopBar, { top: topInset + 6 }]}>
+        <View style={styles.videoTopScrim} pointerEvents="none" />
+        <View style={styles.videoBottomScrim} pointerEvents="none" />
+
+        {/* Top overlay */}
+        <View style={[styles.videoTopBar, { top: topInset + 8 }]}>
           <Pressable
-            style={styles.minimizeBtn}
+            style={styles.glassIconBtn}
             onPress={() => navigation.goBack()}
             accessibilityLabel="Back"
             hitSlop={8}>
@@ -300,9 +351,11 @@ export function VideoConsultScreen() {
           </Pressable>
 
           <View style={styles.videoPatientMetaCol}>
-            <Text style={styles.videoPatientName}>{patientName}</Text>
+            <Text style={styles.videoPatientName} numberOfLines={1}>
+              {patientName}
+            </Text>
             <View style={styles.videoSubRow}>
-              <Text style={styles.videoPatientSub}>32 Y • Female</Text>
+              <Text style={styles.videoPatientSub}>32 Y · Female</Text>
               <View style={styles.timerPill}>
                 <View style={styles.recordingDot} />
                 <Text style={styles.timerPillText}>{formatTime(seconds)}</Text>
@@ -312,11 +365,11 @@ export function VideoConsultScreen() {
 
           <View style={styles.videoTopRightCol}>
             <View style={styles.connectionBadge}>
-              <Wifi size={12} color={colors.mint} strokeWidth={2.2} />
-              <Text style={styles.connectionText}>HD Live</Text>
+              <Wifi size={11} color={colors.mint} strokeWidth={2.4} />
+              <Text style={styles.connectionText}>
+                {url && webViewReady ? 'Live' : 'Standby'}
+              </Text>
             </View>
-
-            {/* Doctor Self-View PiP */}
             <View style={styles.doctorPipWrap}>
               <Image
                 source={{
@@ -324,68 +377,102 @@ export function VideoConsultScreen() {
                 }}
                 style={styles.doctorPipImg}
               />
+              {isCameraOff && (
+                <View style={styles.pipCameraOff}>
+                  <VideoOff size={14} color="#FFFFFF" strokeWidth={2.2} />
+                </View>
+              )}
             </View>
           </View>
         </View>
 
-        {/* Floating Call Controls Pill */}
+        {/* Floating call controls */}
         <View style={styles.callControlsFloatingBar}>
-          <Pressable
-            style={[styles.controlCircleBtn, isMuted && styles.controlCircleBtnMuted]}
-            onPress={() => setIsMuted(!isMuted)}>
-            {isMuted ? (
-              <MicOff size={18} color="#FFFFFF" strokeWidth={2} />
-            ) : (
-              <Mic size={18} color="#FFFFFF" strokeWidth={2} />
-            )}
-          </Pressable>
+          <View style={styles.callControlsGlass}>
+            <Pressable
+              style={[styles.controlCircleBtn, isMuted && styles.controlCircleBtnMuted]}
+              onPress={() => setIsMuted(!isMuted)}
+              accessibilityLabel={isMuted ? 'Unmute' : 'Mute'}>
+              {isMuted ? (
+                <MicOff size={18} color="#FFFFFF" strokeWidth={2.2} />
+              ) : (
+                <Mic size={18} color="#FFFFFF" strokeWidth={2.2} />
+              )}
+            </Pressable>
 
-          <Pressable
-            style={[styles.controlCircleBtn, isCameraOff && styles.controlCircleBtnMuted]}
-            onPress={() => setIsCameraOff(!isCameraOff)}>
-            {isCameraOff ? (
-              <VideoOff size={18} color="#FFFFFF" strokeWidth={2} />
-            ) : (
-              <Video size={18} color="#FFFFFF" strokeWidth={2} />
-            )}
-          </Pressable>
+            <Pressable
+              style={[styles.controlCircleBtn, isCameraOff && styles.controlCircleBtnMuted]}
+              onPress={() => setIsCameraOff(!isCameraOff)}
+              accessibilityLabel={isCameraOff ? 'Camera on' : 'Camera off'}>
+              {isCameraOff ? (
+                <VideoOff size={18} color="#FFFFFF" strokeWidth={2.2} />
+              ) : (
+                <Video size={18} color="#FFFFFF" strokeWidth={2.2} />
+              )}
+            </Pressable>
 
-          <Pressable
-            style={styles.controlCircleBtn}
-            onPress={() => setIsSpeakerOn(!isSpeakerOn)}>
-            {isSpeakerOn ? (
-              <Volume2 size={18} color="#FFFFFF" strokeWidth={2} />
-            ) : (
-              <VolumeX size={18} color="#FFFFFF" strokeWidth={2} />
-            )}
-          </Pressable>
+            <Pressable
+              style={[styles.controlCircleBtn, !isSpeakerOn && styles.controlCircleBtnMuted]}
+              onPress={() => setIsSpeakerOn(!isSpeakerOn)}
+              accessibilityLabel={isSpeakerOn ? 'Speaker off' : 'Speaker on'}>
+              {isSpeakerOn ? (
+                <Volume2 size={18} color="#FFFFFF" strokeWidth={2.2} />
+              ) : (
+                <VolumeX size={18} color="#FFFFFF" strokeWidth={2.2} />
+              )}
+            </Pressable>
 
-          <Pressable
-            style={styles.endCallPillBtn}
-            onPress={() =>
-              Alert.alert('End Consultation', 'Are you sure you want to finish this virtual session?', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Complete & End', style: 'destructive', onPress: () => endCallMut.mutate() },
-              ])
-            }>
-            <PhoneOff size={16} color="#FFFFFF" strokeWidth={2.2} />
-            <Text style={styles.endCallPillText}>End Call</Text>
-          </Pressable>
+            <Pressable
+              style={styles.endCallPillBtn}
+              onPress={() =>
+                Alert.alert(
+                  'End Consultation',
+                  'Finish this virtual session and save clinical notes?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Complete & End',
+                      style: 'destructive',
+                      onPress: () => endCallMut.mutate(),
+                    },
+                  ],
+                )
+              }>
+              <PhoneOff size={15} color="#FFFFFF" strokeWidth={2.4} />
+              {!isCompact && <Text style={styles.endCallPillText}>End</Text>}
+            </Pressable>
+          </View>
         </View>
       </View>
 
       {/* Clinical Workspace Sheet */}
-      <View style={styles.workspaceSheet}>
-        {/* Horizontal Workspace Navigation Tabs */}
-        <View style={styles.tabsRow}>
-          {(
-            [
-              { key: 'symptoms', label: 'Symptoms & Vitals', IconComp: Stethoscope },
-              { key: 'diagnosis', label: 'Diagnosis', IconComp: Activity },
-              { key: 'treatment', label: 'Treatment Plan', IconComp: FileText },
-              { key: 'followup', label: 'Follow-up', IconComp: CalendarClock },
-            ] as const
-          ).map(tab => {
+      <KeyboardAvoidingView
+        style={styles.workspaceSheet}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.sheetHandleRow}>
+          <View style={styles.sheetHandle} />
+        </View>
+
+        <View style={styles.sessionStrip}>
+          <View style={styles.sessionStripLeft}>
+            <View style={styles.sessionLiveDot} />
+            <Text style={styles.sessionStripTitle}>Clinical Workspace</Text>
+          </View>
+          <View style={styles.sessionIdPill}>
+            <ShieldCheck size={11} color={colors.primary} strokeWidth={2.4} />
+            <Text style={styles.sessionIdText}>
+              #{String(appointmentId || 'SESSION').slice(-6).toUpperCase()}
+            </Text>
+          </View>
+        </View>
+
+        {/* Scrollable workspace tabs */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsRow}
+          style={styles.tabsScroll}>
+          {WORKSPACE_TABS.map(tab => {
             const isActive = activeTab === tab.key;
             const IconComponent = tab.IconComp;
             return (
@@ -399,38 +486,41 @@ export function VideoConsultScreen() {
                   strokeWidth={2.2}
                 />
                 <Text
-                  style={[
-                    styles.tabLabelText,
-                    isActive && styles.tabLabelTextActive,
-                  ]}>
+                  style={[styles.tabLabelText, isActive && styles.tabLabelTextActive]}
+                  numberOfLines={1}>
                   {tab.label}
                 </Text>
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
 
         {/* Dynamic Tab Body */}
         <ScrollView
-          contentContainerStyle={styles.tabBodyScroll}
+          contentContainerStyle={[
+            styles.tabBodyScroll,
+            { paddingBottom: 72 + Math.max(insets.bottom, 10) },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}>
           {/* TAB 1: Symptoms & Vitals */}
           {activeTab === 'symptoms' && (
             <View style={styles.tabSection}>
-              {/* Chief Complaint Card */}
               <View style={styles.cardBox}>
                 <View style={styles.cardHeaderRow}>
                   <Text style={styles.cardTitle}>Chief Complaint</Text>
                   <View style={styles.priorityBadge}>
-                    <Text style={styles.priorityBadgeText}>Reported Today</Text>
+                    <Text style={styles.priorityBadgeText}>Today</Text>
                   </View>
                 </View>
                 <Text style={styles.chiefComplaintText}>
-                  "Severe throbbing headache on the right side with nausea and intense light sensitivity since yesterday evening."
+                  “Severe throbbing headache on the right side with nausea and intense light
+                  sensitivity since yesterday evening.”
                 </Text>
               </View>
 
-              {/* Key Symptoms Checklist Card */}
               <View style={styles.cardBox}>
                 <View style={styles.cardHeaderRow}>
                   <Text style={styles.cardTitle}>Reported Symptoms</Text>
@@ -495,51 +585,46 @@ export function VideoConsultScreen() {
                 )}
               </View>
 
-              {/* Vitals Grid Card */}
               <View style={styles.cardBox}>
                 <View style={styles.cardHeaderRow}>
-                  <Text style={styles.cardTitle}>Live Recorded Vitals</Text>
+                  <Text style={styles.cardTitle}>Live Vitals</Text>
                   <View style={styles.syncedPill}>
                     <CheckCircle2 size={11} color={colors.success} strokeWidth={2.2} />
-                    <Text style={styles.syncedPillText}>Auto-Synced</Text>
+                    <Text style={styles.syncedPillText}>Synced</Text>
                   </View>
                 </View>
 
                 <View style={styles.vitalsGrid}>
-                  {/* Vital 1: BP */}
-                  <View style={styles.vitalTile}>
+                  <View style={[styles.vitalTile, isCompact && styles.vitalTileCompact]}>
                     <View style={[styles.vitalIconWrap, { backgroundColor: colors.dangerBg }]}>
                       <HeartPulse size={16} color={colors.danger} strokeWidth={2.2} />
                     </View>
                     <Text style={styles.vitalValue}>120/80</Text>
-                    <Text style={styles.vitalUnit}>mmHg • BP</Text>
+                    <Text style={styles.vitalUnit}>mmHg · BP</Text>
                   </View>
 
-                  {/* Vital 2: Pulse */}
-                  <View style={styles.vitalTile}>
+                  <View style={[styles.vitalTile, isCompact && styles.vitalTileCompact]}>
                     <View style={[styles.vitalIconWrap, { backgroundColor: colors.aqua }]}>
                       <Activity size={16} color={colors.primary} strokeWidth={2.2} />
                     </View>
                     <Text style={styles.vitalValue}>72</Text>
-                    <Text style={styles.vitalUnit}>bpm • Heart Rate</Text>
+                    <Text style={styles.vitalUnit}>bpm · HR</Text>
                   </View>
 
-                  {/* Vital 3: Temp */}
-                  <View style={styles.vitalTile}>
+                  <View style={[styles.vitalTile, isCompact && styles.vitalTileCompact]}>
                     <View style={[styles.vitalIconWrap, { backgroundColor: colors.warningBg }]}>
                       <Thermometer size={16} color={colors.warning} strokeWidth={2.2} />
                     </View>
-                    <Text style={styles.vitalValue}>98.6</Text>
-                    <Text style={styles.vitalUnit}>°F • Temp</Text>
+                    <Text style={styles.vitalValue}>98.6°</Text>
+                    <Text style={styles.vitalUnit}>F · Temp</Text>
                   </View>
 
-                  {/* Vital 4: SpO2 */}
-                  <View style={styles.vitalTile}>
+                  <View style={[styles.vitalTile, isCompact && styles.vitalTileCompact]}>
                     <View style={[styles.vitalIconWrap, { backgroundColor: colors.iceBlue }]}>
                       <Wind size={16} color={colors.primaryLight} strokeWidth={2.2} />
                     </View>
                     <Text style={styles.vitalValue}>98%</Text>
-                    <Text style={styles.vitalUnit}>Oxygen (SpO2)</Text>
+                    <Text style={styles.vitalUnit}>SpO₂</Text>
                   </View>
                 </View>
               </View>
@@ -549,7 +634,6 @@ export function VideoConsultScreen() {
           {/* TAB 2: Diagnosis */}
           {activeTab === 'diagnosis' && (
             <View style={styles.tabSection}>
-              {/* Provisional Diagnosis Card */}
               <View style={styles.cardBox}>
                 <View style={styles.cardHeaderRow}>
                   <Text style={styles.cardTitle}>Provisional Diagnosis</Text>
@@ -557,33 +641,38 @@ export function VideoConsultScreen() {
                 </View>
                 <View style={styles.diagnosisHighlightBox}>
                   <Activity size={18} color={colors.primary} strokeWidth={2.2} />
-                  <Text style={styles.diagnosisHighlightText}>{provisionalDiagnosis}</Text>
+                  <TextInput
+                    style={styles.diagnosisHighlightInput}
+                    value={provisionalDiagnosis}
+                    onChangeText={setProvisionalDiagnosis}
+                    placeholder="Enter provisional diagnosis…"
+                    placeholderTextColor={colors.primaryLight}
+                    multiline
+                  />
                 </View>
               </View>
 
-              {/* Clinical Summary Narrative */}
               <View style={styles.cardBox}>
-                <Text style={styles.cardTitle}>Clinical Examination Summary</Text>
+                <Text style={styles.cardTitle}>Clinical Examination</Text>
                 <TextInput
                   style={styles.summaryTextInput}
                   multiline
                   value={clinicalSummary}
                   onChangeText={setClinicalSummary}
-                  placeholder="Enter clinical examination notes..."
+                  placeholder="Examination findings, systems review…"
                   placeholderTextColor={colors.textMuted}
                 />
               </View>
 
-              {/* Differential Considerations */}
               <View style={styles.cardBox}>
                 <Text style={styles.cardTitle}>Differential Considerations</Text>
                 <View style={styles.differentialRow}>
                   <View style={styles.diffDot} />
-                  <Text style={styles.diffText}>Tension-type Headache (Rule out)</Text>
+                  <Text style={styles.diffText}>Tension-type Headache (rule out)</Text>
                 </View>
                 <View style={styles.differentialRow}>
                   <View style={styles.diffDot} />
-                  <Text style={styles.diffText}>Sinus Headache (No nasal congestion noted)</Text>
+                  <Text style={styles.diffText}>Sinus headache (no congestion noted)</Text>
                 </View>
               </View>
             </View>
@@ -592,25 +681,33 @@ export function VideoConsultScreen() {
           {/* TAB 3: Treatment Plan */}
           {activeTab === 'treatment' && (
             <View style={styles.tabSection}>
-              {/* Treatment Action Plan */}
               <View style={styles.cardBox}>
                 <View style={styles.cardHeaderRow}>
-                  <Text style={styles.cardTitle}>Medical Treatment Plan</Text>
-                  <Pressable onPress={() => setRxModalOpen(true)}>
-                    <Text style={styles.quickRxLink}>+ Prescribe Rx</Text>
+                  <Text style={styles.cardTitle}>Treatment Plan</Text>
+                  <Pressable onPress={() => setRxModalOpen(true)} hitSlop={6}>
+                    <Text style={styles.quickRxLink}>+ Prescribe</Text>
                   </Pressable>
                 </View>
 
-                <View style={styles.treatmentListWrap}>
-                  {treatmentNotes.map((item, idx) => (
-                    <View key={idx} style={styles.treatmentItemRow}>
-                      <View style={styles.treatmentIndexCircle}>
-                        <Text style={styles.treatmentIndexText}>{idx + 1}</Text>
+                {treatmentNotes.length === 0 ? (
+                  <View style={styles.emptyStateBox}>
+                    <FileText size={18} color={colors.textMuted} strokeWidth={2} />
+                    <Text style={styles.emptyStateText}>
+                      No treatment steps yet. Add advice or open Prescribe.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.treatmentListWrap}>
+                    {treatmentNotes.map((item, idx) => (
+                      <View key={idx} style={styles.treatmentItemRow}>
+                        <View style={styles.treatmentIndexCircle}>
+                          <Text style={styles.treatmentIndexText}>{idx + 1}</Text>
+                        </View>
+                        <Text style={styles.treatmentItemText}>{item}</Text>
                       </View>
-                      <Text style={styles.treatmentItemText}>{item}</Text>
-                    </View>
-                  ))}
-                </View>
+                    ))}
+                  </View>
+                )}
 
                 {showAddTreatment ? (
                   <View style={styles.addInlineRow}>
@@ -639,15 +736,14 @@ export function VideoConsultScreen() {
                 )}
               </View>
 
-              {/* Patient Education & Advice */}
               <View style={styles.cardBox}>
-                <Text style={styles.cardTitle}>Patient Lifestyle & Advice</Text>
+                <Text style={styles.cardTitle}>Patient Lifestyle Advice</Text>
                 <TextInput
                   style={styles.summaryTextInput}
                   multiline
                   value={patientEducation}
                   onChangeText={setPatientEducation}
-                  placeholder="Enter patient lifestyle advice..."
+                  placeholder="Rest, hydration, red-flag symptoms…"
                   placeholderTextColor={colors.textMuted}
                 />
               </View>
@@ -657,9 +753,8 @@ export function VideoConsultScreen() {
           {/* TAB 4: Follow-up & Lab Orders */}
           {activeTab === 'followup' && (
             <View style={styles.tabSection}>
-              {/* Follow-up Timeline */}
               <View style={styles.cardBox}>
-                <Text style={styles.cardTitle}>Follow-up Recommendation</Text>
+                <Text style={styles.cardTitle}>Follow-up</Text>
                 <View style={styles.followupChipsRow}>
                   {['3 Days', '7 Days', '2 Weeks', '1 Month'].map(dur => (
                     <Pressable
@@ -674,70 +769,74 @@ export function VideoConsultScreen() {
                           styles.followupChipText,
                           followUp === dur && styles.followupChipTextActive,
                         ]}>
-                        {dur}
+                        {isCompact ? dur.replace(' Days', 'd').replace(' Weeks', 'w').replace(' Month', 'mo') : dur}
                       </Text>
                     </Pressable>
                   ))}
                 </View>
               </View>
 
-              {/* Additional Clinical Notes */}
               <View style={styles.cardBox}>
-                <Text style={styles.cardTitle}>Internal Clinical Notes</Text>
+                <Text style={styles.cardTitle}>Internal Notes</Text>
                 <TextInput
                   style={styles.summaryTextInput}
                   multiline
                   value={notes}
                   onChangeText={setNotes}
-                  placeholder="Enter any private clinical notes for this patient's record..."
+                  placeholder="Private clinical notes for this record…"
                   placeholderTextColor={colors.textMuted}
                 />
               </View>
 
-              {/* Quick Lab Order CTA */}
               <Pressable
                 style={styles.labCtaBanner}
                 onPress={() => setLabOpen(true)}>
                 <View style={styles.labCtaIconWrap}>
                   <FlaskConical size={20} color={colors.primary} strokeWidth={2.2} />
                 </View>
-                <View style={{ flex: 1, gap: 1 }}>
-                  <Text style={styles.labCtaTitle}>Order Diagnostic Lab Tests</Text>
-                  <Text style={styles.labCtaSub}>CBC, Vitamin D, Thyroid or Electrolytes</Text>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={styles.labCtaTitle}>Order Lab Tests</Text>
+                  <Text style={styles.labCtaSub}>CBC · Thyroid · Electrolytes · more</Text>
                 </View>
-                <Plus size={18} color={colors.primary} strokeWidth={2.2} />
+                <View style={styles.labCtaChevron}>
+                  <Plus size={16} color={colors.primary} strokeWidth={2.4} />
+                </View>
               </Pressable>
             </View>
           )}
         </ScrollView>
 
         {/* Persistent Bottom Clinical Actions Bar */}
-        <View style={styles.bottomBar}>
+        <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
           <Pressable
             style={styles.barSecondaryBtn}
             onPress={() => setRxModalOpen(true)}>
-            <Pill size={16} color={colors.primary} strokeWidth={2} />
-            <Text style={styles.barSecondaryBtnText}>Prescribe Rx</Text>
+            <Pill size={16} color={colors.primary} strokeWidth={2.2} />
+            {!isCompact && <Text style={styles.barSecondaryBtnText}>Rx</Text>}
           </Pressable>
 
           <Pressable
             style={styles.barSecondaryBtn}
             onPress={() => setLabOpen(true)}>
-            <FlaskConical size={16} color={colors.primary} strokeWidth={2} />
-            <Text style={styles.barSecondaryBtnText}>Order Labs</Text>
+            <FlaskConical size={16} color={colors.primary} strokeWidth={2.2} />
+            {!isCompact && <Text style={styles.barSecondaryBtnText}>Labs</Text>}
           </Pressable>
 
           <Pressable
             style={styles.barPrimaryBtn}
             onPress={() => endCallMut.mutate()}
             disabled={endCallMut.isPending}>
-            <CheckCircle2 size={16} color="#FFFFFF" strokeWidth={2.2} />
+            {endCallMut.isPending ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <CheckCircle2 size={16} color="#FFFFFF" strokeWidth={2.2} />
+            )}
             <Text style={styles.barPrimaryBtnText}>
-              {endCallMut.isPending ? 'Saving...' : 'Complete Visit'}
+              {endCallMut.isPending ? 'Saving…' : 'Complete Visit'}
             </Text>
           </Pressable>
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       {/* Quick E-Prescription Builder Modal */}
       <Modal
@@ -745,7 +844,9 @@ export function VideoConsultScreen() {
         animationType="slide"
         transparent
         onRequestClose={() => setRxModalOpen(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -757,7 +858,14 @@ export function VideoConsultScreen() {
               </Pressable>
             </View>
 
-            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={{ maxHeight: MODAL_SCROLL_MAX }}
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              automaticallyAdjustKeyboardInsets={true}
+              nestedScrollEnabled>
               {rxItems.map((item, idx) => (
                 <View key={idx} style={styles.modalRxCard}>
                   <View style={styles.modalRxTop}>
@@ -828,19 +936,19 @@ export function VideoConsultScreen() {
                 <Plus size={16} color={colors.primary} strokeWidth={2.2} />
                 <Text style={styles.addMedRowText}>+ Add Another Medicine</Text>
               </Pressable>
-            </ScrollView>
 
-            <Pressable
-              style={styles.modalIssueBtn}
-              onPress={() => issueRxMut.mutate()}
-              disabled={issueRxMut.isPending}>
-              <FileSignature size={18} color="#FFFFFF" strokeWidth={2.2} />
-              <Text style={styles.modalIssueBtnText}>
-                {issueRxMut.isPending ? 'Signing...' : 'Sign & Issue E-Prescription'}
-              </Text>
-            </Pressable>
+              <Pressable
+                style={styles.modalIssueBtn}
+                onPress={() => issueRxMut.mutate()}
+                disabled={issueRxMut.isPending}>
+                <FileSignature size={18} color="#FFFFFF" strokeWidth={2.2} />
+                <Text style={styles.modalIssueBtnText}>
+                  {issueRxMut.isPending ? 'Signing...' : 'Sign & Issue E-Prescription'}
+                </Text>
+              </Pressable>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Lab Order Modal */}
@@ -849,7 +957,9 @@ export function VideoConsultScreen() {
         animationType="slide"
         transparent
         onRequestClose={() => setLabOpen(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -864,7 +974,10 @@ export function VideoConsultScreen() {
             <FlatList
               data={labTests}
               keyExtractor={(item: any) => item.id}
-              style={{ maxHeight: 360 }}
+              style={{ maxHeight: MODAL_SCROLL_MAX }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
               renderItem={({ item }: { item: any }) => (
                 <Pressable
                   style={styles.labRowItem}
@@ -880,7 +993,7 @@ export function VideoConsultScreen() {
               )}
             />
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -889,195 +1002,316 @@ export function VideoConsultScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#0A1924',
+    backgroundColor: '#07141C',
   },
 
-  /* Video Stage (Top ~34% of screen) */
+  /* Video Stage */
   videoStage: {
-    height: '34%',
-    backgroundColor: '#0A1924',
+    backgroundColor: '#07141C',
     position: 'relative',
+    overflow: 'hidden',
   },
   patientVideoFeed: {
     ...StyleSheet.absoluteFill,
-    width: '100%',
-    height: '100%',
+    backgroundColor: '#0A1924',
   },
-  videoGradientOverlay: {
+  videoTopScrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 120,
+    backgroundColor: 'rgba(7, 20, 28, 0.55)',
+  },
+  videoBottomScrim: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 110,
+    backgroundColor: 'rgba(7, 20, 28, 0.5)',
+  },
+  videoLoadingWrap: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(10, 25, 36, 0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#07141C',
+    gap: 10,
+  },
+  videoLoadingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.mint,
+  },
+  videoConnectingCard: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: '38%',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: radius.lg,
+    backgroundColor: 'rgba(0, 78, 82, 0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(221, 246, 242, 0.2)',
+  },
+  videoConnectingTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  videoConnectingSub: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '500',
   },
 
-  /* Video Top Header */
   videoTopBar: {
     position: 'absolute',
     left: 14,
     right: 14,
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     zIndex: 10,
+    gap: 10,
   },
-  minimizeBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  glassIconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
   },
   videoPatientMetaCol: {
     flex: 1,
-    gap: 2,
+    gap: 4,
+    paddingTop: 2,
   },
   videoPatientName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    letterSpacing: -0.2,
   },
   videoSubRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    flexWrap: 'wrap',
   },
   videoPatientSub: {
     fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.85)',
+    color: 'rgba(255,255,255,0.82)',
     fontWeight: '500',
   },
   timerPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: radius.pill,
   },
   recordingDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: colors.danger,
   },
   timerPillText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: '#FFFFFF',
+    fontVariant: ['tabular-nums'],
   },
   videoTopRightCol: {
     alignItems: 'flex-end',
-    gap: 6,
+    gap: 8,
   },
   connectionBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(0, 78, 82, 0.8)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    backgroundColor: 'rgba(0, 109, 114, 0.85)',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: 'rgba(221, 246, 242, 0.3)',
+    borderColor: 'rgba(221, 246, 242, 0.28)',
   },
   connectionText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     color: colors.mint,
+    letterSpacing: 0.2,
   },
   doctorPipWrap: {
-    width: 48,
-    height: 60,
-    borderRadius: radius.sm,
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+    width: 52,
+    height: 68,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
     overflow: 'hidden',
-    backgroundColor: '#000000',
+    backgroundColor: '#000',
     ...shadows.cardElevated,
   },
   doctorPipImg: {
     width: '100%',
     height: '100%',
   },
+  pipCameraOff: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(7,20,28,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-  /* Call Controls Floating Bar */
   callControlsFloatingBar: {
     position: 'absolute',
-    bottom: 10,
+    bottom: 14,
     left: 16,
     right: 16,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
     zIndex: 10,
   },
+  callControlsGlass: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(7, 20, 28, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
   controlCircleBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 78, 82, 0.9)',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(0, 109, 114, 0.95)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   controlCircleBtnMuted: {
-    backgroundColor: 'rgba(240, 82, 82, 0.75)',
+    backgroundColor: 'rgba(240, 82, 82, 0.9)',
   },
   endCallPillBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     backgroundColor: colors.danger,
     paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingVertical: 11,
     borderRadius: radius.pill,
-    ...shadows.cardSoft,
+    minWidth: 42,
+    justifyContent: 'center',
   },
   endCallPillText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
   },
 
-  /* Lower Workspace Sheet (White) */
+  /* Workspace */
   workspaceSheet: {
     flex: 1,
     backgroundColor: colors.background,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
+    borderTopLeftRadius: radius.xxl,
+    borderTopRightRadius: radius.xxl,
+    marginTop: -16,
     overflow: 'hidden',
+    ...shadows.cardElevated,
+  },
+  sheetHandleRow: {
+    alignItems: 'center',
+    paddingTop: 8,
+    paddingBottom: 2,
+    backgroundColor: colors.surface,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+  },
+  sessionStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  sessionStripLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sessionLiveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: colors.success,
+  },
+  sessionStripTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    letterSpacing: -0.2,
+  },
+  sessionIdPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.aqua,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  sessionIdText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary,
+    letterSpacing: 0.3,
+  },
+  tabsScroll: {
+    backgroundColor: colors.surface,
+    maxHeight: 52,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   tabsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    gap: 4,
+    gap: 6,
   },
   tabPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: radius.pill,
-    backgroundColor: 'transparent',
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   tabPillActive: {
     backgroundColor: colors.aqua,
+    borderColor: '#B4E8E1',
   },
   tabLabelText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.textMuted,
   },
@@ -1086,17 +1320,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  /* Tab Body Scroll */
   tabBodyScroll: {
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 85,
+    paddingTop: 14,
   },
   tabSection: {
     gap: 12,
   },
 
-  /* Clean White Cards */
   cardBox: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
@@ -1112,36 +1343,34 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   cardTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    color: colors.textPrimary,
+    color: colors.textSecondary,
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    letterSpacing: 0.6,
   },
   priorityBadge: {
     backgroundColor: colors.aqua,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: radius.xs,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
   },
   priorityBadgeText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     color: colors.primary,
   },
   chiefComplaintText: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textPrimary,
-    lineHeight: 17,
-    fontStyle: 'italic',
+    lineHeight: 19,
   },
   cardSubCount: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textMuted,
     fontWeight: '600',
   },
 
-  /* Symptoms Grid */
   symptomsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1154,19 +1383,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.sm,
+    borderRadius: radius.md,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 8,
+    maxWidth: '100%',
   },
   symptomChipChecked: {
     backgroundColor: colors.aqua,
     borderColor: '#B4E8E1',
   },
   checkboxCircle: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 1,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1176,91 +1406,101 @@ const styles = StyleSheet.create({
     borderColor: colors.success,
   },
   symptomChipText: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textMuted,
     fontWeight: '500',
+    flexShrink: 1,
   },
   symptomChipTextChecked: {
     color: colors.primaryDark,
     fontWeight: '700',
   },
 
-  /* Vitals Grid (4 Tiles) */
   vitalsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: 8,
   },
   vitalTile: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '22%',
+    minWidth: 72,
     backgroundColor: colors.background,
     borderRadius: radius.md,
-    padding: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
     gap: 2,
   },
+  vitalTileCompact: {
+    flexBasis: '46%',
+    minWidth: '46%',
+  },
   vitalIconWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 2,
   },
   vitalValue: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '800',
     color: colors.textPrimary,
+    letterSpacing: -0.3,
   },
   vitalUnit: {
-    fontSize: 9,
+    fontSize: 10,
     color: colors.textMuted,
     textAlign: 'center',
   },
   syncedPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
     backgroundColor: colors.successBg,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radius.xs,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
   },
   syncedPillText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     color: colors.success,
   },
 
-  /* Diagnosis Styles */
   diagnosisHighlightBox: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'flex-start',
+    gap: 10,
     backgroundColor: colors.aqua,
     borderRadius: radius.md,
     padding: 12,
     borderWidth: 1,
     borderColor: '#B4E8E1',
   },
-  diagnosisHighlightText: {
-    fontSize: 13,
+  diagnosisHighlightInput: {
+    flex: 1,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.primaryDark,
-    flex: 1,
+    padding: 0,
+    minHeight: 40,
+    textAlignVertical: 'top',
   },
   summaryTextInput: {
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    padding: 10,
-    fontSize: 12,
+    padding: 12,
+    fontSize: 13,
     color: colors.textPrimary,
-    lineHeight: 16,
-    minHeight: 70,
+    lineHeight: 18,
+    minHeight: 88,
     textAlignVertical: 'top',
   },
   differentialRow: {
@@ -1269,19 +1509,20 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   diffDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: colors.textMuted,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
   },
   diffText: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textSecondary,
+    flex: 1,
+    lineHeight: 17,
   },
 
-  /* Treatment Plan Styles */
   quickRxLink: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.primary,
   },
@@ -1291,47 +1532,66 @@ const styles = StyleSheet.create({
   treatmentItemRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
+    gap: 10,
     backgroundColor: colors.background,
-    borderRadius: radius.sm,
-    padding: 8,
+    borderRadius: radius.md,
+    padding: 10,
     borderWidth: 1,
     borderColor: colors.border,
   },
   treatmentIndexCircle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: colors.aqua,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 1,
   },
   treatmentIndexText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.primary,
   },
   treatmentItemText: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textPrimary,
     flex: 1,
-    lineHeight: 15,
+    lineHeight: 17,
+  },
+  emptyStateBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 18,
+    paddingHorizontal: 12,
+    backgroundColor: colors.background,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+  },
+  emptyStateText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 17,
   },
 
-  /* Follow-up Styles */
   followupChipsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   followupChip: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '22%',
+    minWidth: 64,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: radius.md,
   },
   followupChipActive: {
@@ -1339,7 +1599,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   followupChipText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.textPrimary,
   },
@@ -1350,33 +1610,40 @@ const styles = StyleSheet.create({
   labCtaBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
-    padding: 12,
+    padding: 14,
     borderWidth: 1,
     borderColor: colors.border,
     ...shadows.cardSoft,
   },
   labCtaIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.aqua,
     alignItems: 'center',
     justifyContent: 'center',
   },
   labCtaTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: colors.textPrimary,
   },
   labCtaSub: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textMuted,
   },
+  labCtaChevron: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.aqua,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-  /* Add button and inline input */
   addBtnWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1385,7 +1652,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   addBtnText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.primary,
   },
@@ -1401,23 +1668,22 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    fontSize: 11,
+    paddingVertical: 8,
+    fontSize: 12,
     color: colors.textPrimary,
   },
   addInlineSaveBtn: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: radius.sm,
   },
   addInlineSaveText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
   },
 
-  /* Persistent Bottom Bar */
   bottomBar: {
     position: 'absolute',
     bottom: 0,
@@ -1428,31 +1694,32 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingTop: 10,
     gap: 8,
     ...shadows.cardElevated,
   },
   barSecondaryBtn: {
-    flex: 1,
-    height: 42,
+    height: 44,
+    minWidth: 48,
+    paddingHorizontal: 12,
     borderRadius: radius.md,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.aqua,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: '#B4E8E1',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
   },
   barSecondaryBtnText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.primary,
   },
   barPrimaryBtn: {
-    flex: 1.3,
-    height: 42,
+    flex: 1,
+    height: 44,
     borderRadius: radius.md,
     backgroundColor: colors.primary,
     flexDirection: 'row',
@@ -1462,7 +1729,7 @@ const styles = StyleSheet.create({
     ...shadows.cardSoft,
   },
   barPrimaryBtnText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
   },
@@ -1479,11 +1746,16 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.xl,
     padding: 18,
     gap: 12,
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  modalScrollContent: {
+    paddingBottom: 12,
+    gap: 4,
   },
   modalTitle: {
     fontSize: 15,

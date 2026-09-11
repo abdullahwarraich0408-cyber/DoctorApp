@@ -208,6 +208,8 @@ export function PrescriptionScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}>
           {/* Patient Context Hero Card */}
           <View style={styles.patientHeroCard}>

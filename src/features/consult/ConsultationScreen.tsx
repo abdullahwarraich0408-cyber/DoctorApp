@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Image,
   FlatList,
+  Dimensions,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -21,7 +22,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
   Video,
-  FileText,
   Activity,
   Stethoscope,
   HeartPulse,
@@ -35,13 +35,14 @@ import {
   Plus,
   Trash2,
   X,
-  ChevronRight,
   ShieldCheck,
   FileSignature,
 } from 'lucide-react-native';
 import { doctorPortalApi } from '../../lib/api';
-import { colors, radius, spacing, shadows, TAB_BAR_CLEARANCE } from '../../theme';
+import { colors, radius, shadows } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
+
+const MODAL_SCROLL_MAX = Dimensions.get('window').height * 0.55;
 
 interface RxItem {
   medicine: string;
@@ -204,8 +205,8 @@ export function ConsultationScreen() {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
-      {/* Deep Teal Header */}
-      <View style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
+      {/* Professional Minimalist Header */}
+      <View style={[styles.headerSection, { paddingTop: topInset + 6 }]}>
         <View style={styles.headerRow}>
           <Pressable
             style={styles.headerBackBtn}
@@ -217,10 +218,11 @@ export function ConsultationScreen() {
 
           <View style={styles.headerTitleCol}>
             <Text style={styles.headerTitle}>Clinical Case Sheet</Text>
-            <Text style={styles.headerSub}>Consultation Workspace • ID: {appointmentId?.slice(-6) || '2024'}</Text>
+            <Text style={styles.headerSub}>Workspace • ID: {appointmentId?.slice(-6) || '2024'}</Text>
           </View>
 
           <View style={styles.statusPill}>
+            <View style={styles.statusDot} />
             <Text style={styles.statusPillText}>In Session</Text>
           </View>
         </View>
@@ -232,8 +234,11 @@ export function ConsultationScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}>
-          {/* Patient Hero Card with 1-Tap Video Call Launch */}
+          
+          {/* Patient Profile & Video Action Banner */}
           <View style={styles.patientHeroCard}>
             <View style={styles.patientHeroTop}>
               <Image
@@ -244,12 +249,11 @@ export function ConsultationScreen() {
               />
               <View style={styles.patientHeroMeta}>
                 <Text style={styles.patientHeroName}>{patientName}</Text>
-                <Text style={styles.patientHeroSub}>32 Years • Female • Blood Group B+</Text>
-                <Text style={styles.patientVisitType}>Virtual Telehealth Consultation</Text>
+                <Text style={styles.patientHeroSub}>32 Yrs • Female • Blood Group B+</Text>
               </View>
             </View>
 
-            {/* Launch Live Video Call Banner Button */}
+            {/* Compact Video Call Action Button */}
             <Pressable
               style={styles.videoLaunchBtn}
               onPress={() =>
@@ -259,26 +263,21 @@ export function ConsultationScreen() {
                 })
               }>
               <View style={styles.videoLaunchIconWrap}>
-                <Video size={18} color="#FFFFFF" strokeWidth={2.2} />
+                <Video size={16} color={colors.primary} strokeWidth={2.2} />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.videoLaunchTitle}>Launch Live Video Call Stream</Text>
-                <Text style={styles.videoLaunchSub}>Connect camera and microphone with patient</Text>
-              </View>
-              <View style={styles.videoLaunchPill}>
-                <Text style={styles.videoLaunchPillText}>Open Call &gt;</Text>
-              </View>
+              <Text style={styles.videoLaunchTitle}>Start Video Session</Text>
+              <Text style={styles.videoLaunchPillText}>Launch &gt;</Text>
             </Pressable>
           </View>
 
-          {/* Segmented Workspace Tabs */}
+          {/* Responsive Segmented Workspace Tabs */}
           <View style={styles.workspaceTabsRow}>
             {(
               [
-                { key: 'assessment', label: 'Diagnosis & Notes', IconComp: Activity },
-                { key: 'vitals', label: 'Recorded Vitals', IconComp: Stethoscope },
-                { key: 'orders', label: 'Rx & Lab Orders', IconComp: Pill },
-                { key: 'followup', label: 'Follow-up Plan', IconComp: Calendar },
+                { key: 'assessment', label: 'Diagnosis', IconComp: Activity },
+                { key: 'vitals', label: 'Vitals', IconComp: Stethoscope },
+                { key: 'orders', label: 'Rx & Labs', IconComp: Pill },
+                { key: 'followup', label: 'Follow-up', IconComp: Calendar },
               ] as const
             ).map(tab => {
               const isActive = activeTab === tab.key;
@@ -289,7 +288,7 @@ export function ConsultationScreen() {
                   style={[styles.workspaceTabPill, isActive && styles.workspaceTabPillActive]}
                   onPress={() => setActiveTab(tab.key)}>
                   <IconComp
-                    size={13}
+                    size={14}
                     color={isActive ? colors.primary : colors.textMuted}
                     strokeWidth={2.2}
                   />
@@ -297,7 +296,8 @@ export function ConsultationScreen() {
                     style={[
                       styles.workspaceTabText,
                       isActive && styles.workspaceTabTextActive,
-                    ]}>
+                    ]}
+                    numberOfLines={1}>
                     {tab.label}
                   </Text>
                 </Pressable>
@@ -334,7 +334,7 @@ export function ConsultationScreen() {
 
               {/* Clinical Notes & Treatment Plan */}
               <View style={styles.formCard}>
-                <Text style={styles.formCardLabel}>Clinical Examination & Treatment Plan</Text>
+                <Text style={styles.formCardLabel}>Examination & Treatment Plan</Text>
                 <TextInput
                   style={[styles.formCardInput, styles.notesAreaInput]}
                   value={notes}
@@ -352,7 +352,7 @@ export function ConsultationScreen() {
             <View style={styles.sectionContainer}>
               <View style={styles.formCard}>
                 <View style={styles.cardHeaderRow}>
-                  <Text style={styles.formCardLabel}>Patient Vitals Overview</Text>
+                  <Text style={styles.formCardLabel}>Patient Vitals</Text>
                   <View style={styles.syncedBadge}>
                     <CheckCircle2 size={11} color={colors.success} strokeWidth={2.2} />
                     <Text style={styles.syncedBadgeText}>Synced</Text>
@@ -363,25 +363,25 @@ export function ConsultationScreen() {
                   <View style={styles.vitalTile}>
                     <HeartPulse size={18} color={colors.danger} strokeWidth={2.2} />
                     <Text style={styles.vitalValue}>120/80</Text>
-                    <Text style={styles.vitalLabel}>mmHg • BP</Text>
+                    <Text style={styles.vitalLabel}>BP (mmHg)</Text>
                   </View>
 
                   <View style={styles.vitalTile}>
                     <Activity size={18} color={colors.primary} strokeWidth={2.2} />
                     <Text style={styles.vitalValue}>72</Text>
-                    <Text style={styles.vitalLabel}>bpm • Pulse</Text>
+                    <Text style={styles.vitalLabel}>Pulse (bpm)</Text>
                   </View>
 
                   <View style={styles.vitalTile}>
                     <Thermometer size={18} color={colors.warning} strokeWidth={2.2} />
                     <Text style={styles.vitalValue}>98.6</Text>
-                    <Text style={styles.vitalLabel}>°F • Temp</Text>
+                    <Text style={styles.vitalLabel}>Temp (°F)</Text>
                   </View>
 
                   <View style={styles.vitalTile}>
                     <Wind size={18} color={colors.primaryLight} strokeWidth={2.2} />
                     <Text style={styles.vitalValue}>98%</Text>
-                    <Text style={styles.vitalLabel}>SpO2 • Oxygen</Text>
+                    <Text style={styles.vitalLabel}>SpO2</Text>
                   </View>
                 </View>
               </View>
@@ -394,15 +394,15 @@ export function ConsultationScreen() {
               {/* Prescribed Medications Card */}
               <View style={styles.formCard}>
                 <View style={styles.cardHeaderRow}>
-                  <Text style={styles.formCardLabel}>Prescribed Medications ({rxItems.length})</Text>
+                  <Text style={styles.formCardLabel}>Prescriptions ({rxItems.length})</Text>
                   <Pressable onPress={() => setRxModalOpen(true)}>
-                    <Text style={styles.addOrderLink}>+ Edit Prescription</Text>
+                    <Text style={styles.addOrderLink}>+ Edit Rx</Text>
                   </Pressable>
                 </View>
 
                 {rxItems.map((med, idx) => (
                   <View key={idx} style={styles.medItemRow}>
-                    <Pill size={16} color={colors.primary} strokeWidth={2} />
+                    <Pill size={15} color={colors.primary} strokeWidth={2} />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.medItemName}>{med.medicine || 'Medicine Name'}</Text>
                       <Text style={styles.medItemDetails}>{med.dosage} • {med.frequency} • {med.duration}</Text>
@@ -414,14 +414,14 @@ export function ConsultationScreen() {
                   style={styles.orderCtaBtn}
                   onPress={() => setRxModalOpen(true)}>
                   <Pill size={15} color={colors.primary} strokeWidth={2.2} />
-                  <Text style={styles.orderCtaBtnText}>Open E-Prescription Builder</Text>
+                  <Text style={styles.orderCtaBtnText}>Open Prescription Builder</Text>
                 </Pressable>
               </View>
 
               {/* Lab Tests Card */}
               <View style={styles.formCard}>
                 <View style={styles.cardHeaderRow}>
-                  <Text style={styles.formCardLabel}>Diagnostic Lab Requisitions</Text>
+                  <Text style={styles.formCardLabel}>Diagnostic Requisitions</Text>
                   <Pressable onPress={() => setLabOpen(true)}>
                     <Text style={styles.addOrderLink}>+ Add Test</Text>
                   </Pressable>
@@ -431,7 +431,7 @@ export function ConsultationScreen() {
                   style={styles.orderCtaBtn}
                   onPress={() => setLabOpen(true)}>
                   <FlaskConical size={15} color={colors.primary} strokeWidth={2.2} />
-                  <Text style={styles.orderCtaBtnText}>Order Diagnostic Lab Tests</Text>
+                  <Text style={styles.orderCtaBtnText}>Order Lab Tests</Text>
                 </Pressable>
               </View>
             </View>
@@ -441,7 +441,7 @@ export function ConsultationScreen() {
           {activeTab === 'followup' && (
             <View style={styles.sectionContainer}>
               <View style={styles.formCard}>
-                <Text style={styles.formCardLabel}>Recommended Follow-up Timeline</Text>
+                <Text style={styles.formCardLabel}>Follow-up Timeline</Text>
                 <View style={styles.followupChipsRow}>
                   {['3 Days', '7 Days', '2 Weeks', '1 Month'].map(dur => (
                     <Pressable
@@ -465,42 +465,44 @@ export function ConsultationScreen() {
             </View>
           )}
 
+          {/* Inline Action Card Section */}
+          <View style={styles.inlineActionCard}>
+            <Pressable
+              style={styles.saveDraftBtn}
+              onPress={() => saveMut.mutate()}
+              disabled={saveMut.isPending}>
+              <Bookmark size={16} color={colors.primary} strokeWidth={2} />
+              <Text style={styles.saveDraftBtnText}>
+                {saveMut.isPending ? 'Saving...' : 'Save Notes'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.completeBtn}
+              onPress={() =>
+                Alert.alert(
+                  'Complete Consultation',
+                  'Are you sure you want to finalize and close this consultation case sheet?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'End & Complete', style: 'default', onPress: () => completeMut.mutate() },
+                  ],
+                )
+              }
+              disabled={completeMut.isPending}>
+              <CheckCircle2 size={18} color="#FFFFFF" strokeWidth={2.2} />
+              <Text style={styles.completeBtnText}>
+                {completeMut.isPending ? 'Completing...' : 'Complete Visit'}
+              </Text>
+            </Pressable>
+          </View>
+
           {/* Compliance Banner */}
           <View style={styles.complianceRow}>
             <ShieldCheck size={14} color={colors.textMuted} strokeWidth={2} />
-            <Text style={styles.complianceText}>All clinical records comply with medical documentation standards</Text>
+            <Text style={styles.complianceText}>Confidential medical record • HIPAA Compliant</Text>
           </View>
         </ScrollView>
-
-        {/* Persistent Bottom Actions Bar */}
-        <View style={styles.bottomBar}>
-          <Pressable
-            style={styles.saveDraftBtn}
-            onPress={() => saveMut.mutate()}
-            disabled={saveMut.isPending}>
-            <Bookmark size={16} color={colors.primary} strokeWidth={2} />
-            <Text style={styles.saveDraftBtnText}>Save Notes</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.completeBtn}
-            onPress={() =>
-              Alert.alert(
-                'Complete Consultation',
-                'Are you sure you want to finalize and close this consultation case sheet?',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'End & Complete', style: 'default', onPress: () => completeMut.mutate() },
-                ],
-              )
-            }
-            disabled={completeMut.isPending}>
-            <CheckCircle2 size={18} color="#FFFFFF" strokeWidth={2.2} />
-            <Text style={styles.completeBtnText}>
-              {completeMut.isPending ? 'Completing...' : 'Complete Consultation'}
-            </Text>
-          </Pressable>
-        </View>
       </KeyboardAvoidingView>
 
       {/* Prescription Builder Modal */}
@@ -509,11 +511,11 @@ export function ConsultationScreen() {
         animationType="slide"
         transparent
         onRequestClose={() => setRxModalOpen(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Pill size={20} color={colors.primary} strokeWidth={2} />
+                <Pill size={18} color={colors.primary} strokeWidth={2} />
                 <Text style={styles.modalTitle}>Prescribe Medications</Text>
               </View>
               <Pressable onPress={() => setRxModalOpen(false)} hitSlop={8}>
@@ -521,7 +523,14 @@ export function ConsultationScreen() {
               </Pressable>
             </View>
 
-            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={{ maxHeight: MODAL_SCROLL_MAX }}
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              automaticallyAdjustKeyboardInsets={true}
+              nestedScrollEnabled>
               {rxItems.map((item, idx) => (
                 <View key={idx} style={styles.modalRxCard}>
                   <View style={styles.modalRxTop}>
@@ -589,22 +598,22 @@ export function ConsultationScreen() {
               <Pressable
                 style={styles.addMedRowBtn}
                 onPress={() => setRxItems(prev => [...prev, { ...EMPTY_RX }])}>
-                <Plus size={16} color={colors.primary} strokeWidth={2.2} />
+                <Plus size={15} color={colors.primary} strokeWidth={2.2} />
                 <Text style={styles.addMedRowText}>+ Add Another Medicine</Text>
               </Pressable>
-            </ScrollView>
 
-            <Pressable
-              style={styles.modalIssueBtn}
-              onPress={() => issueRxMut.mutate()}
-              disabled={issueRxMut.isPending}>
-              <FileSignature size={18} color="#FFFFFF" strokeWidth={2.2} />
-              <Text style={styles.modalIssueBtnText}>
-                {issueRxMut.isPending ? 'Signing...' : 'Sign & Issue E-Prescription'}
-              </Text>
-            </Pressable>
+              <Pressable
+                style={styles.modalIssueBtn}
+                onPress={() => issueRxMut.mutate()}
+                disabled={issueRxMut.isPending}>
+                <FileSignature size={18} color="#FFFFFF" strokeWidth={2.2} />
+                <Text style={styles.modalIssueBtnText}>
+                  {issueRxMut.isPending ? 'Signing...' : 'Sign & Issue E-Prescription'}
+                </Text>
+              </Pressable>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Lab Order Modal */}
@@ -613,11 +622,11 @@ export function ConsultationScreen() {
         animationType="slide"
         transparent
         onRequestClose={() => setLabOpen(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <FlaskConical size={20} color={colors.primary} strokeWidth={2} />
+                <FlaskConical size={18} color={colors.primary} strokeWidth={2} />
                 <Text style={styles.modalTitle}>Order Diagnostic Lab Test</Text>
               </View>
               <Pressable onPress={() => setLabOpen(false)} hitSlop={8}>
@@ -628,7 +637,10 @@ export function ConsultationScreen() {
             <FlatList
               data={labTests}
               keyExtractor={(item: any) => item.id}
-              style={{ maxHeight: 360 }}
+              style={{ maxHeight: MODAL_SCROLL_MAX }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
               renderItem={({ item }: { item: any }) => (
                 <Pressable
                   style={styles.labRowItem}
@@ -644,7 +656,7 @@ export function ConsultationScreen() {
               )}
             />
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -657,10 +669,10 @@ const styles = StyleSheet.create({
   },
   headerSection: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 14,
-    borderBottomLeftRadius: radius.xl,
-    borderBottomRightRadius: radius.xl,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
   headerRow: {
     flexDirection: 'row',
@@ -669,9 +681,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   headerBackBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -683,17 +695,26 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
   },
   headerSub: {
-    fontSize: 10,
+    fontSize: 11,
     color: 'rgba(255, 255, 255, 0.85)',
   },
   statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     backgroundColor: colors.mint,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radius.xs,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
   },
   statusPillText: {
     fontSize: 10,
@@ -702,10 +723,10 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 14,
-    paddingBottom: 100,
-    gap: 14,
+    paddingBottom: 30,
+    gap: 12,
   },
 
   /* Patient Hero Card */
@@ -715,8 +736,8 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 12,
-    ...shadows.card,
+    gap: 10,
+    ...shadows.cardSoft,
   },
   patientHeroTop: {
     flexDirection: 'row',
@@ -727,8 +748,8 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 2,
+    borderColor: colors.mint,
   },
   patientHeroMeta: {
     flex: 1,
@@ -744,50 +765,37 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '500',
   },
-  patientVisitType: {
-    fontSize: 10,
-    color: colors.primaryLight,
-    fontWeight: '600',
-  },
 
-  /* Video Call Hero Button */
+  /* Video Action Banner */
   videoLaunchBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     backgroundColor: colors.aqua,
     borderRadius: radius.md,
-    padding: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderWidth: 1,
-    borderColor: '#C8EDE9',
+    borderColor: '#DDF6F2',
   },
   videoLaunchIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.primary,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.mint,
     alignItems: 'center',
     justifyContent: 'center',
   },
   videoLaunchTitle: {
+    flex: 1,
     fontSize: 12,
     fontWeight: '700',
     color: colors.primaryDark,
   },
-  videoLaunchSub: {
-    fontSize: 10,
-    color: colors.textSecondary,
-  },
-  videoLaunchPill: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radius.xs,
-  },
   videoLaunchPillText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.primary,
   },
 
   /* Workspace Segmented Tabs */
@@ -797,7 +805,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: colors.surface,
     padding: 4,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     gap: 4,
@@ -808,11 +816,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingVertical: 7,
-    borderRadius: radius.sm,
+    paddingVertical: 8,
+    borderRadius: radius.md,
   },
   workspaceTabPillActive: {
     backgroundColor: colors.aqua,
+    borderWidth: 1,
+    borderColor: '#DDF6F2',
   },
   workspaceTabText: {
     fontSize: 10,
@@ -821,12 +831,12 @@ const styles = StyleSheet.create({
   },
   workspaceTabTextActive: {
     color: colors.primary,
-    fontWeight: '800',
+    fontWeight: '700',
   },
 
   /* Form Cards */
   sectionContainer: {
-    gap: 12,
+    gap: 10,
   },
   formCard: {
     backgroundColor: colors.surface,
@@ -840,7 +850,7 @@ const styles = StyleSheet.create({
   formCardLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: colors.textPrimary,
+    color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
@@ -850,14 +860,14 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 9,
     fontSize: 12,
     color: colors.textPrimary,
   },
   notesAreaInput: {
     minHeight: 100,
     textAlignVertical: 'top',
-    lineHeight: 17,
+    lineHeight: 18,
   },
   cardHeaderRow: {
     flexDirection: 'row',
@@ -869,7 +879,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
     backgroundColor: colors.successBg,
-    paddingHorizontal: 6,
+    paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: radius.xs,
   },
@@ -883,7 +893,7 @@ const styles = StyleSheet.create({
   vitalsGrid: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 4,
+    marginTop: 2,
   },
   vitalTile: {
     flex: 1,
@@ -918,7 +928,7 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: colors.background,
     padding: 8,
-    borderRadius: radius.sm,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -940,8 +950,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.aqua,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#C8EDE9',
-    marginTop: 4,
+    borderColor: '#DDF6F2',
+    marginTop: 2,
   },
   orderCtaBtnText: {
     fontSize: 11,
@@ -979,33 +989,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  complianceRow: {
+  /* Inline Action Card */
+  inlineActionCard: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 2,
-  },
-  complianceText: {
-    fontSize: 10,
-    color: colors.textMuted,
-  },
-
-  /* Bottom Actions Bar */
-  bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+    borderRadius: radius.lg,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
     gap: 10,
-    ...shadows.cardElevated,
+    marginTop: 4,
+    ...shadows.cardSoft,
   },
   saveDraftBtn: {
     flex: 1,
@@ -1041,6 +1035,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
+  complianceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    marginTop: 4,
+  },
+  complianceText: {
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+
   /* Modal */
   modalOverlay: {
     flex: 1,
@@ -1053,11 +1059,16 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.xl,
     padding: 18,
     gap: 12,
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  modalScrollContent: {
+    paddingBottom: 12,
+    gap: 4,
   },
   modalTitle: {
     fontSize: 15,
@@ -1123,27 +1134,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   labTestName: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.textPrimary,
   },
   labTestCat: {
-    fontSize: 11,
+    fontSize: 10,
     color: colors.textMuted,
   },
   labOrderBtnBadge: {
     backgroundColor: colors.mint,
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: radius.sm,
   },
   labOrderBtnText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: colors.primary,
   },
