@@ -15,6 +15,7 @@ import { PatientDetailScreen } from '../features/patients/PatientDetailScreen';
 import { ScheduleScreen } from '../features/schedule/ScheduleScreen';
 import { SettingsScreen } from '../features/account/SettingsScreen';
 import { NotificationsScreen } from '../features/account/NotificationsScreen';
+import { FollowUpsScreen } from '../features/followups/FollowUpsScreen';
 import { colors } from '../theme';
 import type { AuthStackParamList, RootStackParamList } from './types';
 
@@ -62,6 +63,7 @@ function AppStack() {
       <AppStackNav.Screen name="Schedule" component={ScheduleScreen} />
       <AppStackNav.Screen name="Settings" component={SettingsScreen} />
       <AppStackNav.Screen name="Notifications" component={NotificationsScreen} />
+      <AppStackNav.Screen name="FollowUps" component={FollowUpsScreen} />
     </AppStackNav.Navigator>
   );
 }

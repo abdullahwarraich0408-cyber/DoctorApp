@@ -16,6 +16,7 @@ export type RootStackParamList = {
   Schedule: undefined;
   Settings: undefined;
   Notifications: undefined;
+  FollowUps: undefined;
 };
 
 

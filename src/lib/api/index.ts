@@ -21,6 +21,12 @@ export const partnerAuthApi = {
     }
     return data;
   },
+  forgotPassword: (email: string) =>
+    apiClient('/auth/forgot-password', {
+      method: 'POST',
+      body: { email },
+      skipAuth: true,
+    }),
 };
 
 export const doctorPortalApi = {
@@ -29,8 +35,12 @@ export const doctorPortalApi = {
   updatePassword: (current: string, next: string) =>
     api.patch('/partners/doctor/password', { current, new: next }),
   getAppointments: () => api.get<any>('/partners/doctor/appointments'),
-  updateAppointmentStatus: (id: string, status: string, notes?: string) =>
-    api.patch(`/partners/doctor/appointments/${id}/status`, { status, notes }),
+  updateAppointmentStatus: (id: string, status: string, notes?: string, extra?: { no_show_reason?: string }) =>
+    api.patch(`/partners/doctor/appointments/${id}/status`, {
+      status,
+      notes,
+      ...(extra?.no_show_reason ? { no_show_reason: extra.no_show_reason } : {}),
+    }),
   getSchedule: () => api.get<any>('/partners/doctor/schedule'),
   updateSchedule: (slots: unknown) =>
     api.put('/partners/doctor/schedule', { slots }),
@@ -60,6 +70,29 @@ export const doctorPortalApi = {
   getNotifications: () => api.get<any>('/notifications'),
   markNotificationRead: (id: string) => api.patch(`/notifications/${id}/read`, {}),
   markAllNotificationsRead: () => api.post('/notifications/read-all', {}),
+  getFollowUps: (params: Record<string, string> = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return api.get<any>(
+      query ? `/partners/doctor/follow-ups?${query}` : '/partners/doctor/follow-ups',
+    );
+  },
+  getFollowUp: (id: string) => api.get<any>(`/partners/doctor/follow-ups/${id}`),
+  upsertConsultationFollowUp: (consultationId: string, data: object) =>
+    api.put(`/partners/doctor/consultations/${consultationId}/follow-up`, data),
+  remindFollowUp: (id: string) =>
+    api.post(`/partners/doctor/follow-ups/${id}/remind`, {}),
+  cancelFollowUp: (id: string) =>
+    api.post(`/partners/doctor/follow-ups/${id}/cancel`, {}),
+  markAppointmentPaid: (id: string) =>
+    api.post(`/partners/doctor/appointments/${id}/mark-paid`, {}),
+  getVisitDocuments: (appointmentId: string) =>
+    api.get<any>(`/partners/doctor/appointments/${appointmentId}/documents`),
+  createVisitDocument: (appointmentId: string, data: object) =>
+    api.post(`/partners/doctor/appointments/${appointmentId}/documents`, data),
+  removeVisitDocument: (appointmentId: string, documentId: string) =>
+    api.delete(`/partners/doctor/appointments/${appointmentId}/documents/${documentId}`),
+  getAppointmentSharedHistory: (appointmentId: string) =>
+    api.get<any>(`/partners/doctor/appointments/${appointmentId}/shared-history`),
 };
 
 export const telehealthApi = {

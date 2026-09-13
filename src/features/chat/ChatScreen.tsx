@@ -9,8 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   StatusBar,
-  Image,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -26,69 +26,34 @@ import {
   Mic,
   ArrowUp,
   Lock,
-  Activity,
-  Pill,
 } from 'lucide-react-native';
 import { telehealthApi } from '../../lib/api';
 import { mapChatMessage } from '../../lib/mappers/doctorPortal';
 import { getDoctorSocket } from '../../lib/socket';
 import { colors, radius, spacing, shadows } from '../../theme';
+import GreenGradientHeader from '../../components/GreenGradientHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
-const SAMPLE_MESSAGES = [
-  {
-    id: 'msg-1',
-    text: 'Hi Ayesha, thanks for joining. How are you feeling today?',
-    time: '10:00 AM',
-    isMine: true,
-    sender: 'doctor',
-  },
-  {
-    id: 'msg-2',
-    text: "Hi Dr. Sara, I've had a headache and nausea since yesterday.",
-    time: '10:02 AM',
-    isMine: false,
-    sender: 'patient',
-  },
-  {
-    id: 'msg-3',
-    text: "I'm sorry to hear that. Can you tell me when it started and how severe it is?",
-    time: '10:03 AM',
-    isMine: true,
-    sender: 'doctor',
-  },
-  {
-    id: 'msg-4',
-    text: 'It started in the evening. The pain is moderate, and I feel sensitive to light.',
-    time: '10:04 AM',
-    isMine: false,
-    sender: 'patient',
-  },
-  {
-    id: 'msg-5',
-    text: "Thank you. I'm reviewing your symptoms now. I'll share my recommendations shortly.",
-    time: '10:05 AM',
-    isMine: true,
-    sender: 'doctor',
-  },
-];
-
-const QUICK_CLINICAL_CHIPS = [
-  { id: '1', label: 'Please share symptoms', IconComp: Activity, text: 'Please share any additional symptoms or when this episode started.' },
-  { id: '2', label: 'Join video call', IconComp: Video, text: 'Please join the virtual video room when you are ready.' },
-  { id: '3', label: 'Prescription sent', IconComp: Pill, text: 'I have signed and issued your prescription. You can view it in your health records.' },
-];
+function formatMessageTime(value?: string) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
 
 export function ChatScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'Chat'>>();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isSmallScreen = width < 360;
   const topInset = Math.max(
     insets.top,
     Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   );
-  const { appointmentId, patientName = 'Ayesha Malik' } = route.params;
+  const bottomInset = Math.max(insets.bottom, 8);
+  const { appointmentId, patientName = 'Patient' } = route.params;
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState('');
   const listRef = useRef<FlatList>(null);
@@ -129,19 +94,18 @@ export function ChatScreen() {
     onSuccess: data => {
       const message = data?.message ?? data;
       queryClient.setQueryData(['appointment-chat', appointmentId], (old: any) => {
-        if (!old || !message) return old;
-        const messages = old.messages || [];
-        if (messages.some((m: any) => m.id === message.id)) return old;
-        return { ...old, messages: [...messages, message] };
+        const base = old || { messages: [] };
+        const messages = base.messages || [];
+        if (!message) return base;
+        if (messages.some((m: any) => m.id === message.id)) return base;
+        return { ...base, messages: [...messages, message] };
       });
       setDraft('');
     },
   });
 
   const messages = useMemo(() => {
-    const raw = (chatQuery.data?.messages || []).map((m: any) => mapChatMessage(m));
-    if (raw.length > 0) return raw;
-    return SAMPLE_MESSAGES;
+    return (chatQuery.data?.messages || []).map((m: any) => mapChatMessage(m));
   }, [chatQuery.data]);
 
   const handleSend = (textToSend?: string) => {
@@ -150,18 +114,26 @@ export function ChatScreen() {
     sendMut.mutate(content.trim());
   };
 
+  const patientInitial = (patientName || 'P').charAt(0).toUpperCase();
+  const todayLabel = new Date().toLocaleDateString('en-US', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
+
   return (
     <KeyboardAvoidingView
       style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* Deep Teal Header */}
-      <View style={[styles.headerSection, { paddingTop: topInset + 6 }]}>
+      {/* Header Section */}
+      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 6 }]}>
         <View style={styles.headerRow}>
           {/* Back Button */}
           <Pressable
-            style={styles.backBtn}
+            style={({ pressed }) => [styles.backBtn, pressed && styles.btnPressed]}
             onPress={() => navigation.goBack()}
             accessibilityLabel="Go back"
             hitSlop={8}>
@@ -171,12 +143,9 @@ export function ChatScreen() {
           {/* Patient Avatar & Meta */}
           <View style={styles.patientInfoRow}>
             <View style={styles.avatarContainer}>
-              <Image
-                source={{
-                  uri: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200',
-                }}
-                style={styles.headerAvatar}
-              />
+              <View style={[styles.headerAvatar, styles.avatarFallback]}>
+                <Text style={styles.avatarInitial}>{patientInitial}</Text>
+              </View>
               <View style={styles.onlineBadge} />
             </View>
 
@@ -186,9 +155,9 @@ export function ChatScreen() {
               </Text>
               <View style={styles.statusSubRow}>
                 <View style={styles.activeDot} />
-                <Text style={styles.onlineStatusText}>ONLINE</Text>
+                <Text style={styles.onlineStatusText}>CHAT</Text>
                 <Text style={styles.dotSeparator}>•</Text>
-                <Text style={styles.appointmentTagText}>Appointment • In Progress</Text>
+                <Text style={styles.appointmentTagText}>Secure consultation</Text>
               </View>
             </View>
           </View>
@@ -196,7 +165,7 @@ export function ChatScreen() {
           {/* Right Action Icons */}
           <View style={styles.headerRightActions}>
             <Pressable
-              style={styles.headerActionBtn}
+              style={({ pressed }) => [styles.headerActionBtn, pressed && styles.btnPressed]}
               onPress={() =>
                 navigation.navigate('Video', {
                   appointmentId,
@@ -204,18 +173,18 @@ export function ChatScreen() {
               }
               accessibilityLabel="Start Video Call"
               hitSlop={8}>
-              <Video size={20} color="#FFFFFF" strokeWidth={2} />
+              <Video size={19} color="#FFFFFF" strokeWidth={2} />
             </Pressable>
 
             <Pressable
-              style={styles.headerActionBtn}
+              style={({ pressed }) => [styles.headerActionBtn, pressed && styles.btnPressed]}
               accessibilityLabel="More options"
               hitSlop={8}>
-              <MoreHorizontal size={20} color="#FFFFFF" strokeWidth={2} />
+              <MoreHorizontal size={19} color="#FFFFFF" strokeWidth={2} />
             </Pressable>
           </View>
         </View>
-      </View>
+      </GreenGradientHeader>
 
       {/* Privacy & Security Banner */}
       <View style={styles.privacyBanner}>
@@ -227,16 +196,29 @@ export function ChatScreen() {
 
       {/* Date Divider */}
       <View style={styles.dateDividerRow}>
-        <Text style={styles.dateDividerText}>Today, 14 May</Text>
+        <Text style={styles.dateDividerText}>{todayLabel}</Text>
       </View>
 
       {/* Messages Feed */}
       <FlatList
         ref={listRef}
         data={messages}
-        keyExtractor={(item: any) => item.id}
-        contentContainerStyle={styles.messagesList}
+        keyExtractor={(item: any) => String(item.id)}
+        contentContainerStyle={[
+          styles.messagesList,
+          messages.length === 0 && styles.messagesListEmpty,
+        ]}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View style={styles.emptyChat}>
+            <Lock size={22} color={colors.textMuted} strokeWidth={2} />
+            <Text style={styles.emptyChatTitle}>No messages yet</Text>
+            <Text style={styles.emptyChatSub}>
+              Start the conversation with {patientName}. Messages are end-to-end secured.
+            </Text>
+          </View>
+        }
+        onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
         renderItem={({ item }: { item: any }) => {
           const isDoctor = item.isMine || item.sender === 'doctor';
@@ -245,23 +227,19 @@ export function ChatScreen() {
             <View
               style={[
                 styles.messageRow,
-                isDoctor ? styles.messageRowLeft : styles.messageRowRight,
+                isDoctor ? styles.messageRowRight : styles.messageRowLeft,
               ]}>
-              {/* Doctor Avatar on Left */}
-              {isDoctor && (
-                <Image
-                  source={{
-                    uri: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=200',
-                  }}
-                  style={styles.doctorMsgAvatar}
-                />
+              {!isDoctor && (
+                <View style={[styles.avatarImgSmall, styles.avatarFallback]}>
+                  <Text style={styles.avatarInitialSmall}>{patientInitial}</Text>
+                </View>
               )}
 
-              {/* Message Bubble */}
               <View
                 style={[
                   styles.bubbleContainer,
                   isDoctor ? styles.doctorBubble : styles.patientBubble,
+                  { maxWidth: isSmallScreen ? '85%' : '76%' },
                 ]}>
                 <Text
                   style={[
@@ -272,11 +250,15 @@ export function ChatScreen() {
                 </Text>
 
                 <View style={styles.bubbleMetaRow}>
-                  <Text style={styles.bubbleTimeText}>
-                    {item.time || '10:00 AM'}
+                  <Text
+                    style={[
+                      styles.bubbleTimeText,
+                      isDoctor && styles.doctorTimeText,
+                    ]}>
+                    {item.time || formatMessageTime(item.createdAt) || ''}
                   </Text>
-                  {!isDoctor && (
-                    <CheckCheck size={14} color={colors.primaryLight} strokeWidth={2.2} />
+                  {isDoctor && (
+                    <CheckCheck size={13} color="#E0F2FE" strokeWidth={2.2} />
                   )}
                 </View>
               </View>
@@ -285,33 +267,12 @@ export function ChatScreen() {
         }}
       />
 
-      {/* Clinical Quick Action Chips */}
-      <View style={styles.quickChipsSection}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.quickChipsScroll}>
-          {QUICK_CLINICAL_CHIPS.map(chip => {
-            const IconComponent = chip.IconComp;
-            return (
-              <Pressable
-                key={chip.id}
-                style={styles.quickChipPill}
-                onPress={() => setDraft(chip.text)}>
-                <IconComponent size={14} color={colors.primary} strokeWidth={2} />
-                <Text style={styles.quickChipText}>{chip.label}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-
       {/* Sticky Message Composer */}
-      <View style={styles.composerSection}>
+      <View style={[styles.composerSection, { paddingBottom: bottomInset }]}>
         <View style={styles.composerContainer}>
           {/* Attachment Paperclip */}
-          <Pressable style={styles.composerIconBtn} hitSlop={6}>
-            <Paperclip size={20} color={colors.textMuted} strokeWidth={2} />
+          <Pressable style={({ pressed }) => [styles.composerIconBtn, pressed && styles.btnPressed]} hitSlop={6}>
+            <Paperclip size={19} color={colors.textMuted} strokeWidth={2} />
           </Pressable>
 
           {/* Message Text Input */}
@@ -325,15 +286,16 @@ export function ChatScreen() {
           />
 
           {/* Mic Button */}
-          <Pressable style={styles.composerIconBtn} hitSlop={6}>
-            <Mic size={20} color={colors.textMuted} strokeWidth={2} />
+          <Pressable style={({ pressed }) => [styles.composerIconBtn, pressed && styles.btnPressed]} hitSlop={6}>
+            <Mic size={19} color={colors.textMuted} strokeWidth={2} />
           </Pressable>
 
           {/* Send Button */}
           <Pressable
-            style={[
+            style={({ pressed }) => [
               styles.sendCircleBtn,
               !draft.trim() && styles.sendCircleBtnDisabled,
+              pressed && draft.trim() ? styles.btnPressed : null,
             ]}
             disabled={!draft.trim() || sendMut.isPending}
             onPress={() => handleSend()}>
@@ -361,7 +323,6 @@ const styles = StyleSheet.create({
 
   /* Header Section */
   headerSection: {
-    backgroundColor: colors.primary,
     paddingHorizontal: 16,
     paddingBottom: 14,
     borderBottomLeftRadius: radius.lg,
@@ -395,6 +356,21 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     borderWidth: 1.5,
     borderColor: '#FFFFFF',
+  },
+  avatarFallback: {
+    backgroundColor: colors.aqua,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  avatarInitialSmall: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
   },
   onlineBadge: {
     position: 'absolute',
@@ -492,6 +468,28 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     gap: 12,
   },
+  messagesListEmpty: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  emptyChat: {
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 48,
+    gap: 8,
+  },
+  emptyChatTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginTop: 4,
+  },
+  emptyChatSub: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
   messageRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -504,40 +502,44 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   doctorMsgAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: 2,
+  },
+  avatarImgSmall: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
     marginTop: 2,
   },
   bubbleContainer: {
-    maxWidth: '78%',
     borderRadius: radius.lg,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    gap: 4,
+    paddingVertical: 9,
+    paddingHorizontal: 13,
+    gap: 3,
     ...shadows.cardSoft,
   },
   doctorBubble: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.primary,
+    borderTopRightRadius: radius.xs,
+  },
+  patientBubble: {
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderTopLeftRadius: radius.xs,
   },
-  patientBubble: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderTopRightRadius: radius.xs,
-  },
   bubbleMessageText: {
     fontSize: 13,
     lineHeight: 18,
-    color: colors.textPrimary,
   },
   doctorMessageText: {
-    color: colors.textPrimary,
+    color: '#FFFFFF',
   },
   patientMessageText: {
     color: colors.textPrimary,
@@ -552,6 +554,9 @@ const styles = StyleSheet.create({
   bubbleTimeText: {
     fontSize: 10,
     color: colors.textMuted,
+  },
+  doctorTimeText: {
+    color: '#E0F2FE',
   },
 
   /* Quick Action Chips */
@@ -636,5 +641,9 @@ const styles = StyleSheet.create({
   encryptionFooterText: {
     fontSize: 10,
     color: colors.textMuted,
+  },
+  btnPressed: {
+    opacity: 0.75,
+    transform: [{ scale: 0.95 }],
   },
 });

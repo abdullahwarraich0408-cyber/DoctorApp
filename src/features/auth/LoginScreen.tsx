@@ -30,6 +30,7 @@ import {
   Building,
 } from 'lucide-react-native';
 import { useAuth } from '../../lib/auth/AuthContext';
+import { partnerAuthApi } from '../../lib/api';
 import { ApiError } from '../../lib/api/client';
 import { colors, radius, spacing, shadows } from '../../theme';
 
@@ -107,10 +108,18 @@ export function LoginScreen() {
       return;
     }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await partnerAuthApi.forgotPassword(email.trim());
       setMode('resetsent');
-    }, 800);
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : 'Could not send reset email. Please try again.';
+      setErrorMessage(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

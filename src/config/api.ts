@@ -7,7 +7,7 @@ const LOCAL_IOS = 'http://localhost:5001/api';
 
 /** Match medzoos backend: true = PC backend on :5001 */
 export const USE_LOCAL_API = true;
-export const ANDROID_CONNECTION: 'usb' | 'wifi' | 'emulator' = 'usb';
+export const ANDROID_CONNECTION: 'usb' | 'wifi' | 'emulator' = 'emulator';
 export const LOCAL_DEV_HOST = '172.31.2.189';
 
 export function getApiBaseUrl(): string {

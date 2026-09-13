@@ -17,7 +17,6 @@ import {
   Dimensions,
   useWindowDimensions,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -45,19 +44,24 @@ import {
   Trash2,
   X,
   FileSignature,
-  HeartPulse,
-  Thermometer,
-  Wind,
   ShieldCheck,
 } from 'lucide-react-native';
-import { doctorPortalApi } from '../../lib/api';
+import { doctorPortalApi, telehealthApi } from '../../lib/api';
+import { useAuth } from '../../lib/auth/AuthContext';
+import { resolveFollowUpDate } from '../../lib/mappers/doctorPortal';
+import { TelehealthVideoWebView } from '../../lib/telehealth/TelehealthVideoWebView';
+import {
+  buildJitsiMeetUrl,
+  isDirectMeetUrl,
+  resolveVideoRoomFromAccess,
+} from '../../lib/telehealth/videoRoom';
 import { colors, radius, shadows } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 
 const MODAL_SCROLL_MAX = Dimensions.get('window').height * 0.55;
 
 const WORKSPACE_TABS = [
-  { key: 'symptoms' as const, label: 'Vitals', IconComp: Stethoscope },
+  { key: 'symptoms' as const, label: 'Symptoms', IconComp: Stethoscope },
   { key: 'diagnosis' as const, label: 'Diagnosis', IconComp: Activity },
   { key: 'treatment' as const, label: 'Treatment', IconComp: FileText },
   { key: 'followup' as const, label: 'Follow-up', IconComp: CalendarClock },
@@ -87,6 +91,7 @@ export function VideoConsultScreen() {
   const navigation = useNavigation<VideoNav>();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
+  const { partner } = useAuth();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isCompact = windowWidth < 380;
   const topInset = Math.max(
@@ -95,9 +100,9 @@ export function VideoConsultScreen() {
   );
   const appointmentId = route.params.appointmentId;
 
-  // Responsive video stage: ~38% on tall phones, clamped for small screens
+  // Responsive video stage: give Jitsi enough height to render toolbar + tiles
   const videoStageHeight = Math.round(
-    Math.min(Math.max(windowHeight * 0.36, 220), windowHeight * 0.42),
+    Math.min(Math.max(windowHeight * 0.42, 260), windowHeight * 0.48),
   );
 
   // Active workspace tab: 'symptoms' | 'diagnosis' | 'treatment' | 'followup'
@@ -134,9 +139,16 @@ export function VideoConsultScreen() {
   const [labOpen, setLabOpen] = useState(false);
 
   const videoQuery = useQuery({
-    queryKey: ['appointment-video', appointmentId],
+    queryKey: ['appointment-consultation', appointmentId],
     queryFn: () => doctorPortalApi.getConsultation(appointmentId),
     enabled: Boolean(appointmentId),
+  });
+
+  const videoAccessQuery = useQuery({
+    queryKey: ['appointment-video', appointmentId],
+    queryFn: () => telehealthApi.getVideoAccess(appointmentId),
+    enabled: Boolean(appointmentId),
+    refetchInterval: 12_000,
   });
 
   const labsQuery = useQuery({
@@ -152,25 +164,65 @@ export function VideoConsultScreen() {
     patient?.name ||
     data?.appointment?.patient ||
     'Patient';
+  const appointmentStatus = String(
+    data?.appointment?.status || data?.status || '',
+  ).toLowerCase();
 
-  const [url, setUrl] = useState(route.params.meetingUrl || '');
+  const resolvedVideo = useMemo(
+    () => resolveVideoRoomFromAccess(videoAccessQuery.data),
+    [videoAccessQuery.data],
+  );
+
+  // Prefer Medzoos logged-in doctor profile — never a separate Jitsi account
+  const doctorDisplayName =
+    partner?.name ||
+    resolvedVideo.displayName ||
+    data?.doctor?.name ||
+    data?.appointment?.doctor?.name ||
+    'Doctor';
+
+  const [url, setUrl] = useState(
+    isDirectMeetUrl(route.params.meetingUrl) ? route.params.meetingUrl! : '',
+  );
+  const [videoError, setVideoError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const { jitsiRoom, embedUrl, host, allowed, reason } = resolvedVideo;
+    if (!allowed) {
+      setUrl('');
+      setWebViewReady(false);
+      setVideoError(reason || 'Video is not available yet.');
+      return;
+    }
+    if (embedUrl && isDirectMeetUrl(embedUrl)) {
+      setVideoError(null);
+      setUrl(embedUrl);
+      return;
+    }
+    if (jitsiRoom) {
+      setVideoError(null);
+      setUrl(buildJitsiMeetUrl(jitsiRoom, doctorDisplayName, host || undefined));
+      return;
+    }
+    if (isDirectMeetUrl(route.params.meetingUrl)) {
+      setVideoError(null);
+      setUrl(route.params.meetingUrl!);
+      return;
+    }
+    setUrl('');
+    setWebViewReady(false);
+    if (!videoAccessQuery.isLoading) {
+      setVideoError('Video room is not ready yet. Confirm the visit first.');
+    }
+  }, [
+    resolvedVideo,
+    doctorDisplayName,
+    route.params.meetingUrl,
+    videoAccessQuery.isLoading,
+  ]);
 
   useEffect(() => {
     const data = videoQuery.data;
-    const meetingId =
-      data?.appointment?.meeting_id ||
-      data?.consultation?.meeting_id ||
-      appointmentId;
-    if (meetingId) {
-      const cleanId = String(meetingId).replace(/[^a-zA-Z0-9]/g, '');
-      const roomName = `Medzoos_${cleanId}`;
-      const doctorName = encodeURIComponent(data?.doctor?.name || 'Doctor');
-      const jitsiUrl = `https://meet.element.io/${roomName}#config.prejoinPageEnabled=false&config.requireDisplayName=false&config.disableDeepLinking=true&config.startWithAudioMuted=false&config.startWithVideoMuted=false&userInfo.displayName="${doctorName}"`;
-      setUrl(jitsiUrl);
-    } else if (data?.appointment?.meeting_url) {
-      setUrl(data.appointment.meeting_url);
-    }
-
     if (data && !hydrated) {
       if (data.consultation?.symptoms || data.appointment?.reason) {
         const sym = (data.consultation?.symptoms || data.appointment?.reason || '')
@@ -191,9 +243,44 @@ export function VideoConsultScreen() {
       if (data.consultation?.follow_up_date) {
         setFollowUp(String(data.consultation.follow_up_date).slice(0, 10));
       }
+      const existingRx =
+        data.appointment?.prescription?.items ||
+        data.prescription?.items;
+      if (Array.isArray(existingRx) && existingRx.length > 0) {
+        setRxItems(
+          existingRx.map((item: any) => ({
+            medicine: String(item?.medicine || item?.name || ''),
+            dosage: String(item?.dosage || item?.dose || '1 Tablet'),
+            frequency: String(item?.frequency || 'Once daily'),
+            duration: String(item?.duration || '3 Days'),
+            instructions: String(item?.instructions || 'Take after meals'),
+          })),
+        );
+      }
       setHydrated(true);
     }
-  }, [videoQuery.data, appointmentId, hydrated]);
+  }, [videoQuery.data, hydrated]);
+
+  const startConsultMut = useMutation({
+    mutationFn: () =>
+      doctorPortalApi.updateAppointmentStatus(appointmentId, 'in_progress'),
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: ['doctor-appointments'] });
+      queryClient.invalidateQueries({
+        queryKey: ['appointment-consultation', appointmentId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['appointment-video', appointmentId],
+      });
+      await Promise.all([videoQuery.refetch(), videoAccessQuery.refetch()]);
+    },
+    onError: (error: Error) => {
+      Alert.alert(
+        'Could not start',
+        error.message || 'Unable to start consultation.',
+      );
+    },
+  });
 
   useEffect(() => {
     const timer = setInterval(() => setSeconds(s => s + 1), 1000);
@@ -213,13 +300,35 @@ export function VideoConsultScreen() {
         symptoms: symptomsList.filter(s => s.checked).map(s => s.name).join(', '),
         diagnosis: provisionalDiagnosis,
         clinical_notes: `${clinicalSummary}\n\nNotes: ${notes}`,
-        follow_up_date: followUp || null,
+        follow_up_date: resolveFollowUpDate(followUp),
       });
+      const currentStatus = String(
+        videoQuery.data?.appointment?.status || '',
+      ).toLowerCase();
+      if (currentStatus === 'completed') {
+        return { alreadyCompleted: true };
+      }
+      if (
+        !currentStatus ||
+        currentStatus === 'confirmed' ||
+        currentStatus === 'checked_in'
+      ) {
+        try {
+          await doctorPortalApi.updateAppointmentStatus(appointmentId, 'in_progress');
+        } catch {
+          // Already in progress / completed — continue to complete
+        }
+      }
       return doctorPortalApi.updateAppointmentStatus(appointmentId, 'completed', notes);
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['doctor-appointments'] });
       queryClient.invalidateQueries({ queryKey: ['doctor-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['doctor-follow-ups'] });
+      if (result?.alreadyCompleted) {
+        Alert.alert('Saved', 'Notes updated. This consultation was already completed.');
+        return;
+      }
       Alert.alert('Consultation Completed', 'Clinical documentation and consultation record saved.');
       navigation.goBack();
     },
@@ -228,7 +337,19 @@ export function VideoConsultScreen() {
 
   const issueRxMut = useMutation({
     mutationFn: () => {
-      const validItems = rxItems.filter(it => it.medicine.trim().length > 0);
+      const validItems = rxItems
+        .filter(it => it.medicine.trim().length > 0)
+        .map(it => ({
+          name: it.medicine.trim(),
+          medicine: it.medicine.trim(),
+          dosage: it.dosage,
+          frequency: it.frequency,
+          duration: it.duration,
+          instructions: it.instructions,
+        }));
+      if (validItems.length === 0) {
+        throw new Error('Enter at least one medicine name before signing.');
+      }
       return doctorPortalApi.createPrescription({
         appointment_id: appointmentId,
         items: validItems,
@@ -237,8 +358,14 @@ export function VideoConsultScreen() {
       });
     },
     onSuccess: () => {
+      setRxItems(prev => {
+        const filled = prev.filter(it => it.medicine.trim());
+        return filled.length ? filled : [EMPTY_RX];
+      });
       setRxModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['appointment-consultation', appointmentId] });
       queryClient.invalidateQueries({ queryKey: ['appointment-video', appointmentId] });
+      queryClient.invalidateQueries({ queryKey: ['doctor-appointments'] });
       Alert.alert('Prescription Issued', 'E-Prescription has been signed and delivered to patient.');
     },
     onError: (err: Error) => Alert.alert('Could not issue prescription', err.message),
@@ -297,51 +424,67 @@ export function VideoConsultScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#07141C" />
 
       {/* Cinematic Video Stage */}
-      <View style={[styles.videoStage, { height: videoStageHeight, paddingTop: topInset }]}>
+      <View
+        style={[styles.videoStage, { height: videoStageHeight, paddingTop: topInset }]}
+        pointerEvents="box-none">
         {url ? (
-          <WebView
-            source={{ uri: url }}
+          <TelehealthVideoWebView
+            url={url}
             style={styles.patientVideoFeed}
-            allowsInlineMediaPlayback
-            mediaPlaybackRequiresUserAction={false}
-            javaScriptEnabled
-            domStorageEnabled
-            startInLoadingState
-            onLoadEnd={() => setWebViewReady(true)}
-            renderLoading={() => (
-              <View style={styles.videoLoadingWrap}>
-                <ActivityIndicator size="large" color={colors.mint} />
-                <Text style={styles.videoLoadingText}>Connecting secure session…</Text>
-              </View>
-            )}
+            muted={isMuted}
+            cameraOff={isCameraOff}
+            onReadyChange={setWebViewReady}
+            loadingLabel="Connecting secure session…"
           />
         ) : (
           <>
-            <Image
-              source={{
-                uri: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=800',
-              }}
-              style={styles.patientVideoFeed}
-            />
+            <View style={[styles.patientVideoFeed, styles.videoPlaceholder]}>
+              <Text style={styles.videoPlaceholderInitial}>
+                {(patientName || 'P').charAt(0).toUpperCase()}
+              </Text>
+            </View>
             <View style={styles.videoConnectingCard}>
-              {videoQuery.isLoading ? (
+              {videoAccessQuery.isLoading || videoQuery.isLoading ? (
                 <ActivityIndicator color={colors.mint} />
               ) : (
                 <Video size={22} color={colors.mint} strokeWidth={2} />
               )}
               <Text style={styles.videoConnectingTitle}>
-                {videoQuery.isLoading ? 'Preparing room' : 'Waiting for video link'}
+                {videoAccessQuery.isLoading || videoQuery.isLoading
+                  ? 'Preparing room'
+                  : videoError || 'Waiting for video link'}
               </Text>
-              <Text style={styles.videoConnectingSub}>Secure clinical teleconsult</Text>
+              <Text style={styles.videoConnectingSub}>
+                Same secure Jitsi room as the patient app & website
+              </Text>
+              {appointmentStatus === 'confirmed' || appointmentStatus === 'pending' ? (
+                <Pressable
+                  style={styles.startConsultBtn}
+                  disabled={startConsultMut.isPending}
+                  onPress={() => startConsultMut.mutate()}>
+                  {startConsultMut.isPending ? (
+                    <ActivityIndicator color="#041016" />
+                  ) : (
+                    <Text style={styles.startConsultBtnText}>
+                      Start consultation & admit patient
+                    </Text>
+                  )}
+                </Pressable>
+              ) : null}
             </View>
           </>
         )}
 
-        <View style={styles.videoTopScrim} pointerEvents="none" />
-        <View style={styles.videoBottomScrim} pointerEvents="none" />
+        {/* Gradient scrims only while waiting — hide when live so Jitsi UI stays visible */}
+        {!webViewReady ? (
+          <>
+            <View style={styles.videoTopScrim} pointerEvents="none" />
+            <View style={styles.videoBottomScrim} pointerEvents="none" />
+          </>
+        ) : null}
 
         {/* Top overlay */}
-        <View style={[styles.videoTopBar, { top: topInset + 8 }]}>
+        <View style={[styles.videoTopBar, { top: topInset + 8 }]} pointerEvents="box-none">
           <Pressable
             style={styles.glassIconBtn}
             onPress={() => navigation.goBack()}
@@ -350,12 +493,12 @@ export function VideoConsultScreen() {
             <ArrowLeft size={20} color="#FFFFFF" strokeWidth={2.2} />
           </Pressable>
 
-          <View style={styles.videoPatientMetaCol}>
+          <View style={styles.videoPatientMetaCol} pointerEvents="none">
             <Text style={styles.videoPatientName} numberOfLines={1}>
               {patientName}
             </Text>
             <View style={styles.videoSubRow}>
-              <Text style={styles.videoPatientSub}>32 Y · Female</Text>
+              <Text style={styles.videoPatientSub}>Teleconsult</Text>
               <View style={styles.timerPill}>
                 <View style={styles.recordingDot} />
                 <Text style={styles.timerPillText}>{formatTime(seconds)}</Text>
@@ -363,31 +506,31 @@ export function VideoConsultScreen() {
             </View>
           </View>
 
-          <View style={styles.videoTopRightCol}>
+          <View style={styles.videoTopRightCol} pointerEvents="none">
             <View style={styles.connectionBadge}>
               <Wifi size={11} color={colors.mint} strokeWidth={2.4} />
               <Text style={styles.connectionText}>
                 {url && webViewReady ? 'Live' : 'Standby'}
               </Text>
             </View>
-            <View style={styles.doctorPipWrap}>
-              <Image
-                source={{
-                  uri: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=200',
-                }}
-                style={styles.doctorPipImg}
-              />
-              {isCameraOff && (
-                <View style={styles.pipCameraOff}>
-                  <VideoOff size={14} color="#FFFFFF" strokeWidth={2.2} />
+            {/* Decorative PiP covers Jitsi local video — only show while connecting */}
+            {!webViewReady ? (
+              <View style={styles.doctorPipWrap}>
+                <View style={[styles.doctorPipImg, styles.doctorPipFallback]}>
+                  <Text style={styles.doctorPipInitial}>Dr</Text>
                 </View>
-              )}
-            </View>
+                {isCameraOff && (
+                  <View style={styles.pipCameraOff}>
+                    <VideoOff size={14} color="#FFFFFF" strokeWidth={2.2} />
+                  </View>
+                )}
+              </View>
+            ) : null}
           </View>
         </View>
 
-        {/* Floating call controls */}
-        <View style={styles.callControlsFloatingBar}>
+        {/* Floating call controls — sit above Jitsi toolbar area */}
+        <View style={styles.callControlsFloatingBar} pointerEvents="box-none">
           <View style={styles.callControlsGlass}>
             <Pressable
               style={[styles.controlCircleBtn, isMuted && styles.controlCircleBtnMuted]}
@@ -448,7 +591,8 @@ export function VideoConsultScreen() {
       {/* Clinical Workspace Sheet */}
       <KeyboardAvoidingView
         style={styles.workspaceSheet}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
         <View style={styles.sheetHandleRow}>
           <View style={styles.sheetHandle} />
         </View>
@@ -499,13 +643,15 @@ export function VideoConsultScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.tabBodyScroll,
-            { paddingBottom: 72 + Math.max(insets.bottom, 10) },
+            { paddingBottom: 100 + Math.max(insets.bottom, 10) },
           ]}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={true}
-          keyboardDismissMode="on-drag"
-          showsVerticalScrollIndicator={false}>
-          {/* TAB 1: Symptoms & Vitals */}
+          keyboardDismissMode="interactive"
+          nestedScrollEnabled
+          showsVerticalScrollIndicator={false}
+          contentInsetAdjustmentBehavior="automatic">
+          {/* TAB 1: Symptoms */}
           {activeTab === 'symptoms' && (
             <View style={styles.tabSection}>
               <View style={styles.cardBox}>
@@ -567,6 +713,7 @@ export function VideoConsultScreen() {
                       value={newSymptomText}
                       onChangeText={setNewSymptomText}
                       autoFocus
+                      blurOnSubmit={false}
                     />
                     <Pressable style={styles.addInlineSaveBtn} onPress={handleAddSymptom}>
                       <Text style={styles.addInlineSaveText}>Add</Text>
@@ -583,50 +730,6 @@ export function VideoConsultScreen() {
                     <Text style={styles.addBtnText}>Add Symptom</Text>
                   </Pressable>
                 )}
-              </View>
-
-              <View style={styles.cardBox}>
-                <View style={styles.cardHeaderRow}>
-                  <Text style={styles.cardTitle}>Live Vitals</Text>
-                  <View style={styles.syncedPill}>
-                    <CheckCircle2 size={11} color={colors.success} strokeWidth={2.2} />
-                    <Text style={styles.syncedPillText}>Synced</Text>
-                  </View>
-                </View>
-
-                <View style={styles.vitalsGrid}>
-                  <View style={[styles.vitalTile, isCompact && styles.vitalTileCompact]}>
-                    <View style={[styles.vitalIconWrap, { backgroundColor: colors.dangerBg }]}>
-                      <HeartPulse size={16} color={colors.danger} strokeWidth={2.2} />
-                    </View>
-                    <Text style={styles.vitalValue}>120/80</Text>
-                    <Text style={styles.vitalUnit}>mmHg · BP</Text>
-                  </View>
-
-                  <View style={[styles.vitalTile, isCompact && styles.vitalTileCompact]}>
-                    <View style={[styles.vitalIconWrap, { backgroundColor: colors.aqua }]}>
-                      <Activity size={16} color={colors.primary} strokeWidth={2.2} />
-                    </View>
-                    <Text style={styles.vitalValue}>72</Text>
-                    <Text style={styles.vitalUnit}>bpm · HR</Text>
-                  </View>
-
-                  <View style={[styles.vitalTile, isCompact && styles.vitalTileCompact]}>
-                    <View style={[styles.vitalIconWrap, { backgroundColor: colors.warningBg }]}>
-                      <Thermometer size={16} color={colors.warning} strokeWidth={2.2} />
-                    </View>
-                    <Text style={styles.vitalValue}>98.6°</Text>
-                    <Text style={styles.vitalUnit}>F · Temp</Text>
-                  </View>
-
-                  <View style={[styles.vitalTile, isCompact && styles.vitalTileCompact]}>
-                    <View style={[styles.vitalIconWrap, { backgroundColor: colors.iceBlue }]}>
-                      <Wind size={16} color={colors.primaryLight} strokeWidth={2.2} />
-                    </View>
-                    <Text style={styles.vitalValue}>98%</Text>
-                    <Text style={styles.vitalUnit}>SpO₂</Text>
-                  </View>
-                </View>
               </View>
             </View>
           )}
@@ -939,7 +1042,17 @@ export function VideoConsultScreen() {
 
               <Pressable
                 style={styles.modalIssueBtn}
-                onPress={() => issueRxMut.mutate()}
+                onPress={() => {
+                  const hasMedicine = rxItems.some(it => it.medicine.trim());
+                  if (!hasMedicine) {
+                    Alert.alert(
+                      'Medicine required',
+                      'Please enter a medicine name before signing the prescription.',
+                    );
+                    return;
+                  }
+                  issueRxMut.mutate();
+                }}
                 disabled={issueRxMut.isPending}>
                 <FileSignature size={18} color="#FFFFFF" strokeWidth={2.2} />
                 <Text style={styles.modalIssueBtnText}>
@@ -1015,6 +1128,15 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     backgroundColor: '#0A1924',
   },
+  videoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoPlaceholderInitial: {
+    fontSize: 64,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.35)',
+  },
   videoTopScrim: {
     position: 'absolute',
     top: 0,
@@ -1065,6 +1187,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: 'rgba(255,255,255,0.7)',
     fontWeight: '500',
+  },
+  startConsultBtn: {
+    marginTop: 10,
+    backgroundColor: colors.mint,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minWidth: 220,
+    alignItems: 'center',
+  },
+  startConsultBtnText: {
+    color: '#041016',
+    fontSize: 12,
+    fontWeight: '800',
   },
 
   videoTopBar: {
@@ -1163,6 +1299,16 @@ const styles = StyleSheet.create({
   doctorPipImg: {
     width: '100%',
     height: '100%',
+  },
+  doctorPipFallback: {
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doctorPipInitial: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14,
   },
   pipCameraOff: {
     ...StyleSheet.absoluteFill,
@@ -1414,62 +1560,6 @@ const styles = StyleSheet.create({
   symptomChipTextChecked: {
     color: colors.primaryDark,
     fontWeight: '700',
-  },
-
-  vitalsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  vitalTile: {
-    flexGrow: 1,
-    flexBasis: '22%',
-    minWidth: 72,
-    backgroundColor: colors.background,
-    borderRadius: radius.md,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 2,
-  },
-  vitalTileCompact: {
-    flexBasis: '46%',
-    minWidth: '46%',
-  },
-  vitalIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-  },
-  vitalValue: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.textPrimary,
-    letterSpacing: -0.3,
-  },
-  vitalUnit: {
-    fontSize: 10,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-  syncedPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.successBg,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: radius.pill,
-  },
-  syncedPillText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.success,
   },
 
   diagnosisHighlightBox: {

@@ -9,7 +9,6 @@ import {
   RefreshControl,
   Platform,
   StatusBar,
-  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -32,17 +31,17 @@ import {
 import { doctorPortalApi } from '../../lib/api';
 import { mapPatient } from '../../lib/mappers/doctorPortal';
 import { colors, radius, spacing, shadows, TAB_BAR_CLEARANCE } from '../../theme';
+import GreenGradientHeader from '../../components/GreenGradientHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
 interface PatientItem {
   id: string;
   name: string;
-  age: number;
-  gender: string;
+  age?: number | null;
+  gender?: string | null;
   lastVisit: string;
   totalVisits: number;
   conditions: string[];
-  avatar: string;
   phone?: string;
   email?: string;
 }
@@ -72,20 +71,19 @@ export function PatientsScreen() {
       Array.isArray(query.data) ? query.data : query.data?.patients || []
     ).map(mapPatient);
 
-    return raw.map((item: any, idx: number) => ({
-      id: item.id || `pat-${idx + 1}`,
+    return raw.map((item: any) => ({
+      id: item.id,
       name: item.name || 'Patient',
-      age: item.age || 32,
-      gender: item.gender || (idx % 2 === 0 ? 'Female' : 'Male'),
+      age: item.age || null,
+      gender: item.gender || null,
       lastVisit: item.lastVisit || 'Recently',
       totalVisits: item.appointmentsCount || 1,
       conditions: item.condition
-        ? item.condition.split(',').map((c: string) => c.trim())
-        : ['Consultation Patient'],
-      avatar:
-        idx % 2 === 0
-          ? 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200'
-          : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
+        ? String(item.condition)
+            .split(',')
+            .map((c: string) => c.trim())
+            .filter(Boolean)
+        : [],
       phone: item.phone,
       email: item.email,
     }));
@@ -120,10 +118,9 @@ export function PatientsScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       {/* Top Header with Deep Teal Background */}
-      <View style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
+      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>Patients Directory</Text>
 
@@ -131,7 +128,7 @@ export function PatientsScreen() {
             <Text style={styles.headerBadgeText}>{totalPatientsCount} Registered</Text>
           </View>
         </View>
-      </View>
+      </GreenGradientHeader>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -221,14 +218,22 @@ export function PatientsScreen() {
                     })
                   }>
                   <View style={styles.patientRowContent}>
-                    {/* Patient Avatar */}
-                    <Image source={{ uri: patient.avatar }} style={styles.patientAvatar} />
+                    <View style={[styles.patientAvatar, styles.patientAvatarFallback]}>
+                      <Text style={styles.patientAvatarInitial}>
+                        {(patient.name || 'P').charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
 
                     {/* Patient Main Info */}
                     <View style={styles.patientInfoCol}>
                       <Text style={styles.patientName}>{patient.name}</Text>
                       <Text style={styles.patientDemographics}>
-                        {patient.gender} • {patient.totalVisits} visit{patient.totalVisits > 1 ? 's' : ''}
+                        {[
+                          patient.gender || null,
+                          `${patient.totalVisits} visit${patient.totalVisits > 1 ? 's' : ''}`,
+                        ]
+                          .filter(Boolean)
+                          .join(' • ')}
                       </Text>
 
                       {patient.phone ? (
@@ -264,8 +269,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   headerSection: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 20,
+        paddingHorizontal: 20,
     paddingBottom: 14,
     borderBottomLeftRadius: radius.xl,
     borderBottomRightRadius: radius.xl,
@@ -388,6 +392,16 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  patientAvatarFallback: {
+    backgroundColor: colors.aqua,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  patientAvatarInitial: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primary,
   },
   patientInfoCol: {
     flex: 1,

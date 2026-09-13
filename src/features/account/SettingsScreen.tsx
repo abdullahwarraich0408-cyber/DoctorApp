@@ -27,6 +27,7 @@ import {
 import { doctorPortalApi } from '../../lib/api';
 import { mapDoctorProfile } from '../../lib/mappers/doctorPortal';
 import { colors, radius, spacing, shadows } from '../../theme';
+import GreenGradientHeader from '../../components/GreenGradientHeader';
 
 export function SettingsScreen() {
   const navigation = useNavigation();
@@ -103,10 +104,9 @@ export function SettingsScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: topInset + 8 }]}>
+      <GreenGradientHeader style={[styles.header, { paddingTop: topInset + 8 }]}>
         <View style={styles.headerRow}>
           <Pressable
             style={styles.backBtn}
@@ -118,7 +118,7 @@ export function SettingsScreen() {
           <Text style={styles.headerTitle}>Profile & Practice Settings</Text>
           <View style={{ width: 40 }} />
         </View>
-      </View>
+      </GreenGradientHeader>
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -292,7 +292,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingBottom: 14,
     borderBottomLeftRadius: radius.xl,

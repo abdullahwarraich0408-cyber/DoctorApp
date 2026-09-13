@@ -8,7 +8,8 @@ import {
   Alert,
   Platform,
   StatusBar,
-  Image,
+  ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,8 +18,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
   MoreVertical,
-  Droplet,
-  Phone,
   AlertTriangle,
   ChevronRight,
   Stethoscope,
@@ -30,112 +29,117 @@ import {
   MessageSquare,
 } from 'lucide-react-native';
 import { doctorPortalApi } from '../../lib/api';
-import { formatDate } from '../../lib/mappers/doctorPortal';
-import { colors, radius, spacing, shadows } from '../../theme';
+import { formatDate, mapPatientClinicalHistory } from '../../lib/mappers/doctorPortal';
+import { colors, radius, shadows } from '../../theme';
+import PatientInfoCard from '../../components/PatientInfoCard';
+import SectionHeader from '../../components/SectionHeader';
+import ScheduleFollowUpModal from '../../components/ScheduleFollowUpModal';
+import GreenGradientHeader from '../../components/GreenGradientHeader';
 import type { RootStackParamList } from '../../navigation/types';
+
+function formatFollowUpLabel(value?: string | null) {
+  if (!value) return '';
+  return formatDate(value) || String(value).slice(0, 10);
+}
 
 export function PatientDetailScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'PatientDetail'>>();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isSmallScreen = width < 360;
   const topInset = Math.max(
     insets.top,
     Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   );
+  const bottomInset = Math.max(insets.bottom, 14);
 
   const [activeTab, setActiveTab] = useState<'overview' | 'consultations' | 'prescriptions' | 'labs'>('overview');
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+
+  const targetPatientId = route.params?.patientId;
 
   const query = useQuery({
-    queryKey: ['doctor-patient', route.params.patientId],
-    queryFn: () => doctorPortalApi.getPatient(route.params.patientId),
+    queryKey: ['doctor-patient', targetPatientId],
+    enabled: Boolean(targetPatientId),
+    queryFn: () => doctorPortalApi.getPatient(String(targetPatientId)),
   });
 
-  const data = query.data;
-  const patient = data?.patient || data?.customer;
+  const history = useMemo(
+    () => mapPatientClinicalHistory(query.data || {}),
+    [query.data],
+  );
 
-  const patientName = patient?.name || 'Ayesha Malik';
-  const patientPhone = patient?.phone || '+92 300 1234567';
-  const patientEmail = patient?.email || 'ayesha.malik@example.com';
-  const bloodGroup = patient?.blood_group || patient?.profile_data?.blood_group || 'B+ (Positive)';
-  const ageGender = `${patient?.age || 32} Years • ${patient?.gender || 'Female'}`;
+  const patientName = history.patient.name;
+  const patientPhone = history.patient.phone || 'Not provided';
+  const bloodGroup = history.patient.bloodGroup || '—';
+  const ageGender = [
+    history.patient.age ? `${history.patient.age} Years` : null,
+    history.patient.gender || null,
+  ]
+    .filter(Boolean)
+    .join(' • ') || 'Patient';
 
-  const consultationsList = useMemo(() => {
-    const raw = data?.consultations || data?.appointments || [];
-    if (raw.length > 0) {
-      return raw.map((c: any) => ({
-        id: c.id,
-        date: formatDate(c.appointment_date || c.created_at || c.date),
-        time: c.slot || c.time || '10:00 AM',
-        title: c.reason || c.diagnosis || 'Consultation Visit',
-        doctor: c.doctor?.name ? `Dr. ${c.doctor.name}` : 'Dr. Sara Khan',
-        notes: c.clinical_notes || c.consultation_notes || 'Patient reviewed and prescribed necessary care plan.',
-        status: c.status || 'completed',
-      }));
+  const allConsultations = history.consultations;
+  const prescriptionsList = history.prescriptions;
+  const labsList = history.labs;
+  const followUps = history.followUps || [];
+  const latestRx = prescriptionsList[0];
+  const latestAppointmentId = history.latestAppointmentId;
+
+  const requireAppointment = (action: string) => {
+    if (!latestAppointmentId) {
+      Alert.alert(
+        'No appointment linked',
+        `Open this patient from an appointment first to ${action}.`,
+      );
+      return null;
     }
-    return [
-      {
-        id: 'c1',
-        date: '20 May 2024',
-        time: '10:00 AM',
-        title: 'Migraine Follow-up',
-        doctor: 'Dr. Sara Khan • Neurology',
-        notes: 'Patient reports reduced frequency of migraines. Continue current medication and avoid known triggers.',
-        status: 'completed',
-      },
-      {
-        id: 'c2',
-        date: '05 Apr 2024',
-        time: '11:30 AM',
-        title: 'Acute Migraine',
-        doctor: 'Dr. Sara Khan • Neurology',
-        notes: 'Severe headache with nausea. Prescribed medication and rest advised.',
-        status: 'in_progress',
-      },
-    ];
-  }, [data]);
+    return latestAppointmentId;
+  };
 
-  const prescriptionsList = useMemo(() => {
-    const raw = data?.prescriptions || [];
-    if (raw.length > 0) {
-      return raw;
-    }
-    return [
-      {
-        id: 'p1',
-        date: '20 May 2024',
-        doctor: 'Dr. Sara Khan',
-        items: [
-          { name: 'Tab. Sumatriptan 50mg', freq: 'As needed' },
-          { name: 'Tab. Naproxen 250mg', freq: 'After food, twice daily' },
-        ],
-      },
-    ];
-  }, [data]);
+  const openPrescription = (appointmentId?: string) => {
+    const id = appointmentId || requireAppointment('create a prescription');
+    if (!id) return;
+    navigation.navigate('Prescription', {
+      appointmentId: id,
+      patientName,
+    });
+  };
 
-  const labsList = useMemo(() => {
-    const raw = data?.lab_orders || data?.labOrders || [];
-    if (raw.length > 0) {
-      return raw.map((l: any) => ({
-        id: l.id,
-        name: l.lab_test?.name || l.name || 'Diagnostic Panel',
-        date: formatDate(l.created_at || l.date),
-        status: l.status || 'Normal',
-      }));
-    }
-    return [
-      { id: 'l1', name: 'CBC (Complete Blood Count)', date: '18 May 2024', status: 'Normal' },
-      { id: 'l2', name: 'Vitamin D', date: '18 May 2024', status: 'Low' },
-      { id: 'l3', name: 'Thyroid Profile', date: '10 Mar 2024', status: 'Normal' },
-    ];
-  }, [data]);
+  const openChat = () => {
+    const id = requireAppointment('start chat');
+    if (!id) return;
+    navigation.navigate('Chat', { appointmentId: id, patientName });
+  };
+
+  const openConsultation = () => {
+    const id = requireAppointment('open case sheet');
+    if (!id) return;
+    navigation.navigate('Consultation', {
+      appointmentId: id,
+      patientName,
+      patientId: targetPatientId,
+    });
+  };
+
+  if (!targetPatientId) {
+    return (
+      <View style={[styles.root, styles.centered]}>
+        <Text style={styles.emptyTitle}>Patient not found</Text>
+        <Pressable onPress={() => navigation.goBack()}>
+          <Text style={styles.summaryLink}>Go back</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* Deep Teal Header */}
-      <View style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
+      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
         <View style={styles.headerRow}>
           <Pressable
             style={styles.headerBackBtn}
@@ -147,303 +151,561 @@ export function PatientDetailScreen() {
 
           <Text style={styles.headerTitle}>Patient Record</Text>
 
-          <Pressable
-            style={styles.headerIconBtn}
-            accessibilityLabel="Options"
-            hitSlop={8}>
+          <Pressable style={styles.headerIconBtn} accessibilityLabel="Options" hitSlop={8}>
             <MoreVertical size={22} color="#FFFFFF" strokeWidth={2} />
           </Pressable>
         </View>
-      </View>
+      </GreenGradientHeader>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}>
-        {/* Patient Profile Card */}
-        <View style={styles.profileCard}>
-          <View style={styles.avatarWrapper}>
-            <Image
-              source={{
-                uri: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200',
-              }}
-              style={styles.avatarImg}
-            />
-            <View style={styles.onlineBadgeDot} />
-          </View>
-
-          <View style={styles.profileMetaCol}>
-            <Text style={styles.patientNameText}>{patientName}</Text>
-            <Text style={styles.demographicsText}>{ageGender}</Text>
-
-            <View style={styles.bloodGroupRow}>
-              <Droplet size={13} color={colors.danger} strokeWidth={2.2} />
-              <Text style={styles.bloodGroupText}>{bloodGroup}</Text>
-            </View>
-
-            <Text style={styles.patientIdText}>ID: {route.params.patientId?.slice(-8) || 'MD-07123'}</Text>
-          </View>
-
-          <Pressable
-            style={styles.contactBtnWrap}
-            onPress={() =>
-              Alert.alert(
-                'Contact Patient',
-                `Reach out to ${patientName} at ${patientPhone}`,
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Call Now', onPress: () => {} },
-                ],
-              )
-            }>
-            <View style={styles.contactIconCircle}>
-              <Phone size={18} color={colors.primary} strokeWidth={2} />
-            </View>
-            <Text style={styles.contactBtnLabel}>Contact</Text>
+      {query.isLoading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.loadingText}>Loading clinical history…</Text>
+        </View>
+      ) : query.isError ? (
+        <View style={styles.centered}>
+          <Text style={styles.emptyTitle}>Could not load patient</Text>
+          <Text style={styles.emptySub}>
+            {(query.error as Error)?.message || 'Please try again.'}
+          </Text>
+          <Pressable onPress={() => query.refetch()} style={styles.retryBtn}>
+            <Text style={styles.retryBtnText}>Retry</Text>
           </Pressable>
         </View>
-
-        {/* Clinical Allergies & Warnings Banner */}
-        <Pressable
-          style={styles.alertBanner}
-          onPress={() =>
-            Alert.alert(
-              'Allergies & Clinical Warnings',
-              'Patient has severe allergic reactions to Penicillin and Pollen.\n\nKnown migraine triggers: Bright light, stress, lack of sleep.',
-            )
-          }>
-          <AlertTriangle size={18} color={colors.danger} strokeWidth={2.2} />
-          <View style={styles.alertTextCol}>
-            <Text style={styles.alertTitle}>Allergies & Warnings</Text>
-            <Text style={styles.alertSub} numberOfLines={1}>
-              Allergic to Penicillin, Pollen • Triggers: Bright light, stress
-            </Text>
-          </View>
-          <ChevronRight size={18} color={colors.danger} strokeWidth={2} />
-        </Pressable>
-
-        {/* Horizontal Segmented Tabs */}
-        <View style={styles.tabsContainer}>
+      ) : (
+        <>
           <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabsScroll}>
-            {(
-              [
-                { key: 'overview', label: 'Overview', IconComp: Stethoscope },
-                { key: 'consultations', label: 'Consultations', IconComp: Calendar },
-                { key: 'prescriptions', label: 'Prescriptions', IconComp: Pill },
-                { key: 'labs', label: 'Lab Results', IconComp: FlaskConical },
-              ] as const
-            ).map(tab => {
-              const isActive = activeTab === tab.key;
-              const IconComponent = tab.IconComp;
-              return (
-                <Pressable
-                  key={tab.key}
-                  style={[styles.tabChip, isActive && styles.tabChipActive]}
-                  onPress={() => setActiveTab(tab.key)}>
-                  <IconComponent
-                    size={14}
-                    color={isActive ? colors.primary : colors.textMuted}
-                    strokeWidth={2}
-                  />
-                  <Text
-                    style={[
-                      styles.tabChipText,
-                      isActive && styles.tabChipTextActive,
-                    ]}>
-                    {tab.label}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + 72 }]}
+            showsVerticalScrollIndicator={false}>
+            <PatientInfoCard
+              avatarUri={require('../../assets/patient_avatar_placeholder.png')}
+              name={patientName}
+              ageGender={ageGender}
+              bloodGroup={bloodGroup}
+              patientId={String(targetPatientId).slice(-8)}
+              phone={patientPhone}
+            />
+
+            {history.patient.allergies ? (
+              <Pressable
+                style={styles.alertBanner}
+                onPress={() =>
+                  Alert.alert('Allergies & Clinical Warnings', history.patient.allergies)
+                }>
+                <AlertTriangle size={18} color={colors.danger} strokeWidth={2.2} />
+                <View style={styles.alertTextCol}>
+                  <Text style={styles.alertTitle}>Allergies & Warnings</Text>
+                  <Text style={styles.alertSub} numberOfLines={1}>
+                    {history.patient.allergies}
                   </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
+                </View>
+                <ChevronRight size={18} color={colors.danger} strokeWidth={2} />
+              </Pressable>
+            ) : null}
 
-        {/* Consultation Timeline Section */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Consultation Timeline ({consultationsList.length})</Text>
-          <Pressable
-            onPress={() =>
-              (navigation as any).navigate('Appointments')
-            }>
-            <Text style={styles.viewHistoryLink}>View All &gt;</Text>
-          </Pressable>
-        </View>
+            <View style={styles.tabsContainer}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tabsScroll}>
+                {[
+                  { key: 'overview', label: 'Overview', IconComp: Stethoscope },
+                  { key: 'consultations', label: 'Consultations', IconComp: Calendar },
+                  { key: 'prescriptions', label: 'Prescriptions', IconComp: Pill },
+                  { key: 'labs', label: 'Lab Results', IconComp: FlaskConical },
+                ].map(tab => {
+                  const isActive = activeTab === tab.key;
+                  const IconComponent = tab.IconComp;
+                  return (
+                    <Pressable
+                      key={tab.key}
+                      style={({ pressed }) => [
+                        styles.tabChip,
+                        isActive && styles.tabChipActive,
+                        pressed && styles.tabChipPressed,
+                      ]}
+                      onPress={() => setActiveTab(tab.key as any)}>
+                      <IconComponent
+                        size={14}
+                        color={isActive ? colors.primary : colors.textMuted}
+                        strokeWidth={2}
+                      />
+                      <Text
+                        style={[
+                          styles.tabChipText,
+                          isActive && styles.tabChipTextActive,
+                        ]}>
+                        {tab.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
 
-        <View style={styles.timelineCard}>
-          {consultationsList.map((item: any, idx: number) => {
-            const isLast = idx === consultationsList.length - 1;
-            const isCompleted = item.status === 'completed';
+            {activeTab === 'overview' && (
+              <>
+                <SectionHeader
+                  title={`Upcoming Follow-ups (${followUps.length})`}
+                  onPress={() => setShowScheduleModal(true)}
+                  buttonLabel="+ Schedule Follow-up"
+                />
 
-            return (
-              <View key={item.id} style={[styles.timelineEventRow, isLast && { paddingBottom: 0 }]}>
-                <View style={styles.timelineColLeft}>
-                  <View
-                    style={[
-                      styles.timelineDot,
-                      { backgroundColor: isCompleted ? colors.success : colors.warning },
-                    ]}
-                  />
-                  {!isLast && <View style={styles.timelineLine} />}
+                <View style={styles.timelineCard}>
+                  {followUps.length === 0 ? (
+                    <Text style={styles.emptyInline}>
+                      No follow-up scheduled yet. Tap “+ Schedule Follow-up” to add one.
+                    </Text>
+                  ) : (
+                    followUps.map((fu: any) => (
+                      <View key={fu.id} style={styles.followUpRow}>
+                        <View
+                          style={[
+                            styles.followUpIconWrap,
+                            fu.status === 'overdue' && styles.followUpIconOverdue,
+                          ]}>
+                          <Calendar
+                            size={16}
+                            color={fu.status === 'overdue' ? colors.danger : colors.primary}
+                            strokeWidth={2.2}
+                          />
+                        </View>
+                        <View style={{ flex: 1, gap: 2 }}>
+                          <Text style={styles.followUpDateText}>
+                            {fu.dateLabel || formatFollowUpLabel(fu.date)}
+                          </Text>
+                          <Text style={styles.followUpTitleText} numberOfLines={1}>
+                            {fu.title || 'Follow-up visit'}
+                          </Text>
+                          {!!fu.notes && (
+                            <Text style={styles.followUpNotesText} numberOfLines={2}>
+                              {fu.notes}
+                            </Text>
+                          )}
+                        </View>
+                        <View
+                          style={
+                            fu.status === 'overdue'
+                              ? styles.statusPillProgress
+                              : styles.statusPillCompleted
+                          }>
+                          <Text
+                            style={
+                              fu.status === 'overdue'
+                                ? styles.statusPillTextProgress
+                                : styles.statusPillTextCompleted
+                            }>
+                            {fu.status === 'overdue' ? 'Overdue' : 'Upcoming'}
+                          </Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
                 </View>
 
-                <View style={styles.timelineContent}>
-                  <View style={styles.eventDateRow}>
-                    <Text style={styles.eventDateText}>{item.date}</Text>
-                    <Text style={styles.eventTimeText}>{item.time}</Text>
-                    <View
-                      style={
-                        isCompleted
-                          ? styles.statusPillCompleted
-                          : styles.statusPillProgress
-                      }>
-                      <Text
-                        style={
-                          isCompleted
-                            ? styles.statusPillTextCompleted
-                            : styles.statusPillTextProgress
-                        }>
-                        {isCompleted ? 'Completed' : 'In Progress'}
-                      </Text>
+                <SectionHeader
+                  title={`Consultation Timeline (${allConsultations.length})`}
+                />
+
+                <View style={styles.timelineCard}>
+                  {allConsultations.length === 0 ? (
+                    <Text style={styles.emptyInline}>No consultations recorded yet.</Text>
+                  ) : (
+                    allConsultations.map((item: any, idx: number) => {
+                      const isLast = idx === allConsultations.length - 1;
+                      const isCompleted = item.status === 'completed';
+                      return (
+                        <View
+                          key={item.id}
+                          style={[styles.timelineEventRow, isLast && { paddingBottom: 0 }]}>
+                          <View style={styles.timelineColLeft}>
+                            <View
+                              style={[
+                                styles.timelineDot,
+                                {
+                                  backgroundColor: isCompleted
+                                    ? colors.success
+                                    : colors.warning,
+                                },
+                              ]}
+                            />
+                            {!isLast && <View style={styles.timelineLine} />}
+                          </View>
+                          <View style={styles.timelineContent}>
+                            <View style={styles.eventDateRow}>
+                              <Text style={styles.eventDateText}>{item.date}</Text>
+                              {!!item.time && (
+                                <Text style={styles.eventTimeText}>{item.time}</Text>
+                              )}
+                              <View
+                                style={
+                                  isCompleted
+                                    ? styles.statusPillCompleted
+                                    : styles.statusPillProgress
+                                }>
+                                <Text
+                                  style={
+                                    isCompleted
+                                      ? styles.statusPillTextCompleted
+                                      : styles.statusPillTextProgress
+                                  }>
+                                  {String(item.status || '').replace('_', ' ')}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text style={styles.eventTitle}>{item.title}</Text>
+                            {!!item.doctor && (
+                              <Text style={styles.eventDoctor}>{item.doctor}</Text>
+                            )}
+                            <Text style={styles.eventNotes}>
+                              {item.notes || item.complaint || 'No clinical notes recorded.'}
+                            </Text>
+                            {!!item.followUpDate && (
+                              <View style={styles.inlineFollowUp}>
+                                <Calendar size={12} color={colors.primary} strokeWidth={2} />
+                                <Text style={styles.inlineFollowUpText}>
+                                  Follow-up: {formatFollowUpLabel(item.followUpDate)}
+                                  {item.followUpNotes ? ` · ${item.followUpNotes}` : ''}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
+
+                <View
+                  style={[
+                    styles.twoColumnRow,
+                    isSmallScreen && { flexDirection: 'column' },
+                  ]}>
+                  <View style={styles.summaryBox}>
+                    <SectionHeader
+                      title="Prescription"
+                      buttonLabel="+ Create"
+                      onPress={() => openPrescription()}
+                    />
+                    {latestRx ? (
+                      <>
+                        <View style={styles.rxInnerCard}>
+                          <View style={styles.rxIconWrap}>
+                            <FileText size={16} color={colors.primary} strokeWidth={2} />
+                          </View>
+                          <View style={{ gap: 1 }}>
+                            <Text style={styles.rxDateText}>Latest Rx</Text>
+                            <Text style={styles.rxDoctorText}>
+                              {latestRx.date || latestRx.doctor}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.medBulletList}>
+                          {(latestRx.items || []).slice(0, 3).map((med: any, i: number) => (
+                            <React.Fragment key={`${latestRx.id}-${i}`}>
+                              <Text style={styles.medBulletText}>• {med.name}</Text>
+                              {!!med.freq && (
+                                <Text style={styles.medSubText}>{med.freq}</Text>
+                              )}
+                            </React.Fragment>
+                          ))}
+                          {(latestRx.items || []).length === 0 && (
+                            <Text style={styles.medSubText}>
+                              {latestRx.notes || 'Prescription on file'}
+                            </Text>
+                          )}
+                        </View>
+                        <Pressable
+                          style={styles.sendRxMiniBtn}
+                          onPress={() => openPrescription(latestRx.appointmentId)}>
+                          <Send size={12} color={colors.primary} strokeWidth={2} />
+                          <Text style={styles.sendRxMiniBtnText}>View / Edit Rx</Text>
+                        </Pressable>
+                      </>
+                    ) : (
+                      <Text style={styles.emptyInline}>No prescriptions yet.</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.summaryBox}>
+                    <View style={styles.summaryHeaderRow}>
+                      <Text style={styles.summaryTitle}>Lab Results</Text>
+                      <Pressable onPress={() => setActiveTab('labs')}>
+                        <Text style={styles.summaryLink}>View All</Text>
+                      </Pressable>
+                    </View>
+                    <View style={styles.labResultsList}>
+                      {labsList.length === 0 ? (
+                        <Text style={styles.emptyInline}>No lab orders yet.</Text>
+                      ) : (
+                        labsList.slice(0, 3).map((lab: any) => (
+                          <View key={lab.id} style={styles.labRow}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.labNameText}>{lab.name}</Text>
+                              <Text style={styles.labDateText}>{lab.date}</Text>
+                            </View>
+                            <View
+                              style={
+                                String(lab.status).toLowerCase().includes('normal') ||
+                                String(lab.status).toLowerCase() === 'completed'
+                                  ? styles.labPillNormal
+                                  : styles.labPillLow
+                              }>
+                              <Text
+                                style={
+                                  String(lab.status).toLowerCase().includes('normal') ||
+                                  String(lab.status).toLowerCase() === 'completed'
+                                    ? styles.labPillTextNormal
+                                    : styles.labPillTextLow
+                                }>
+                                {lab.status}
+                              </Text>
+                            </View>
+                          </View>
+                        ))
+                      )}
                     </View>
                   </View>
-
-                  <Text style={styles.eventTitle}>{item.title}</Text>
-                  <Text style={styles.eventDoctor}>{item.doctor}</Text>
-                  <Text style={styles.eventNotes}>{item.notes}</Text>
                 </View>
-              </View>
-            );
-          })}
-        </View>
+              </>
+            )}
 
-        {/* Side-by-Side Summary Cards: Latest Prescription & Recent Lab Results */}
-        <View style={styles.twoColumnRow}>
-          {/* Left Card: Latest Prescription */}
-          <View style={styles.summaryBox}>
-            <View style={styles.summaryHeaderRow}>
-              <Text style={styles.summaryTitle}>Prescription</Text>
-              <Pressable
-                onPress={() =>
-                  navigation.navigate('Prescription', {
-                    appointmentId: route.params.patientId,
-                    patientName,
-                  })
-                }>
-                <Text style={styles.summaryLink}>+ Create</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.rxInnerCard}>
-              <View style={styles.rxIconWrap}>
-                <FileText size={16} color={colors.primary} strokeWidth={2} />
+            {activeTab === 'consultations' && (
+              <View style={styles.tabContentBlock}>
+                <SectionHeader
+                  title={`Consultation History (${allConsultations.length})`}
+                  buttonLabel="+ Schedule Follow-up"
+                  onPress={() => setShowScheduleModal(true)}
+                />
+                {allConsultations.length === 0 ? (
+                  <Text style={styles.emptyInline}>No consultation history.</Text>
+                ) : (
+                  allConsultations.map((c: any) => (
+                    <View key={c.id} style={styles.detailCardBlock}>
+                      <View style={styles.cardHeaderRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.cardHeaderTitle}>{c.title}</Text>
+                          {!!c.doctor && (
+                            <Text style={styles.doctorSubText}>{c.doctor}</Text>
+                          )}
+                        </View>
+                        <View
+                          style={
+                            c.status === 'completed'
+                              ? styles.statusPillCompleted
+                              : styles.statusPillProgress
+                          }>
+                          <Text
+                            style={
+                              c.status === 'completed'
+                                ? styles.statusPillTextCompleted
+                                : styles.statusPillTextProgress
+                            }>
+                            {String(c.status || '').replace('_', ' ')}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.detailSectionDivider} />
+                      <View style={styles.infoMetaRow}>
+                        <Text style={styles.metaLabel}>Date & Time:</Text>
+                        <Text style={styles.metaVal}>
+                          {c.date}
+                          {c.time ? ` at ${c.time}` : ''}
+                        </Text>
+                      </View>
+                      {!!c.complaint && (
+                        <View style={styles.infoMetaRow}>
+                          <Text style={styles.metaLabel}>Chief Complaint:</Text>
+                          <Text style={styles.metaVal}>{c.complaint}</Text>
+                        </View>
+                      )}
+                      <View style={styles.infoMetaRowColumn}>
+                        <Text style={styles.metaLabel}>Clinical Notes & Assessment:</Text>
+                        <Text style={styles.clinicalNotesText}>
+                          {c.notes || 'No clinical notes recorded for this visit.'}
+                        </Text>
+                      </View>
+                      {!!c.followUpDate && (
+                        <View style={styles.infoMetaRowColumn}>
+                          <Text style={styles.metaLabel}>Scheduled Follow-up:</Text>
+                          <Text style={styles.clinicalNotesText}>
+                            {formatFollowUpLabel(c.followUpDate)}
+                            {c.followUpNotes ? `\n${c.followUpNotes}` : ''}
+                          </Text>
+                        </View>
+                      )}
+                      {!!c.appointmentId && (
+                        <Pressable
+                          style={styles.sendRxMiniBtn}
+                          onPress={() => openPrescription(c.appointmentId)}>
+                          <Pill size={12} color={colors.primary} strokeWidth={2} />
+                          <Text style={styles.sendRxMiniBtnText}>Prescription</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  ))
+                )}
               </View>
-              <View style={{ gap: 1 }}>
-                <Text style={styles.rxDateText}>Latest Rx</Text>
-                <Text style={styles.rxDoctorText}>Dr. Sara Khan</Text>
-              </View>
-            </View>
+            )}
 
-            <View style={styles.medBulletList}>
-              <Text style={styles.medBulletText}>• Sumatriptan 50mg</Text>
-              <Text style={styles.medSubText}>As needed</Text>
-              <Text style={styles.medBulletText}>• Domperidone 10mg</Text>
-              <Text style={styles.medSubText}>Twice daily</Text>
-            </View>
+            {activeTab === 'prescriptions' && (
+              <View style={styles.tabContentBlock}>
+                <SectionHeader
+                  title={`Prescriptions History (${prescriptionsList.length})`}
+                  buttonLabel="+ New Rx"
+                  onPress={() => openPrescription()}
+                />
+                {prescriptionsList.length === 0 ? (
+                  <Text style={styles.emptyInline}>No prescriptions issued yet.</Text>
+                ) : (
+                  prescriptionsList.map((rx: any) => (
+                    <Pressable
+                      key={rx.id}
+                      style={styles.detailCardBlock}
+                      onPress={() => openPrescription(rx.appointmentId)}>
+                      <View style={styles.cardHeaderRow}>
+                        <View>
+                          <Text style={styles.cardHeaderTitle}>
+                            Prescription #{String(rx.id).slice(0, 8).toUpperCase()}
+                          </Text>
+                          <Text style={styles.doctorSubText}>{rx.doctor}</Text>
+                        </View>
+                        <Text style={styles.cardDateText}>{rx.date}</Text>
+                      </View>
+                      <View style={styles.detailSectionDivider} />
+                      <View style={styles.medItemsContainer}>
+                        {(rx.items || []).length === 0 ? (
+                          <Text style={styles.clinicalNotesText}>
+                            {rx.notes || 'Open to view prescription details.'}
+                          </Text>
+                        ) : (
+                          rx.items.map((item: any, i: number) => (
+                            <View key={i} style={styles.richMedCard}>
+                              <View style={styles.medIconBox}>
+                                <Pill size={16} color={colors.primary} strokeWidth={2} />
+                              </View>
+                              <View style={{ flex: 1, gap: 2 }}>
+                                <Text style={styles.medNameText}>{item.name}</Text>
+                                <Text style={styles.medMetaText}>
+                                  Dosage: {item.dosage || '—'}
+                                  {item.freq ? ` • ${item.freq}` : ''}
+                                </Text>
+                                {!!item.duration && (
+                                  <Text style={styles.medDurationText}>
+                                    Duration: {item.duration}
+                                  </Text>
+                                )}
+                              </View>
+                            </View>
+                          ))
+                        )}
+                      </View>
+                    </Pressable>
+                  ))
+                )}
+              </View>
+            )}
+
+            {activeTab === 'labs' && (
+              <View style={styles.tabContentBlock}>
+                <SectionHeader title={`Lab & Diagnostic Reports (${labsList.length})`} />
+                {labsList.length === 0 ? (
+                  <Text style={styles.emptyInline}>No lab reports for this patient.</Text>
+                ) : (
+                  labsList.map((lab: any) => (
+                    <View key={lab.id} style={styles.richLabCard}>
+                      <View style={styles.labCardHeader}>
+                        <View style={styles.labIconBox}>
+                          <FlaskConical size={18} color={colors.primary} strokeWidth={2} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.labDetailName}>{lab.name}</Text>
+                          <Text style={styles.labCategoryText}>
+                            Category: {lab.category} • Date: {lab.date}
+                          </Text>
+                        </View>
+                        <View
+                          style={
+                            String(lab.status).toLowerCase().includes('normal') ||
+                            String(lab.status).toLowerCase() === 'completed'
+                              ? styles.labPillNormal
+                              : styles.labPillLow
+                          }>
+                          <Text
+                            style={
+                              String(lab.status).toLowerCase().includes('normal') ||
+                              String(lab.status).toLowerCase() === 'completed'
+                                ? styles.labPillTextNormal
+                                : styles.labPillTextLow
+                            }>
+                            {lab.status}
+                          </Text>
+                        </View>
+                      </View>
+                      {!!lab.resultValue && (
+                        <View style={styles.labResultBox}>
+                          <Text style={styles.resultValueText}>
+                            Result: {lab.resultValue}
+                          </Text>
+                          {!!lab.refRange && (
+                            <Text style={styles.refRangeText}>
+                              Reference: {lab.refRange}
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  ))
+                )}
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={[styles.bottomBar, { paddingBottom: bottomInset }]}>
+            <Pressable
+              style={({ pressed }) => [styles.barOutlineBtn, pressed && styles.btnPressed]}
+              onPress={openConsultation}>
+              <FileText size={14} color={colors.primary} strokeWidth={2} />
+              <Text style={styles.barOutlineBtnText} numberOfLines={1}>
+                Case Sheet
+              </Text>
+            </Pressable>
 
             <Pressable
-              style={styles.sendRxMiniBtn}
-              onPress={() =>
-                navigation.navigate('Prescription', {
-                  appointmentId: route.params.patientId,
-                  patientName,
-                })
-              }>
-              <Send size={12} color={colors.primary} strokeWidth={2} />
-              <Text style={styles.sendRxMiniBtnText}>Send Rx</Text>
+              style={({ pressed }) => [styles.barOutlineBtn, pressed && styles.btnPressed]}
+              onPress={openChat}>
+              <MessageSquare size={14} color={colors.primary} strokeWidth={2} />
+              <Text style={styles.barOutlineBtnText} numberOfLines={1}>
+                Start Chat
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.barSolidBtn, pressed && styles.btnPressed]}
+              onPress={() => openPrescription()}>
+              <Send size={14} color="#FFFFFF" strokeWidth={2} />
+              <Text style={styles.barSolidBtnText} numberOfLines={1}>
+                Send Rx
+              </Text>
             </Pressable>
           </View>
+        </>
+      )}
 
-          {/* Right Card: Recent Lab Results */}
-          <View style={styles.summaryBox}>
-            <View style={styles.summaryHeaderRow}>
-              <Text style={styles.summaryTitle}>Lab Results</Text>
-              <Pressable onPress={() => setActiveTab('labs')}>
-                <Text style={styles.summaryLink}>View All</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.labResultsList}>
-              {labsList.map((lab: any) => (
-                <View key={lab.id} style={styles.labRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.labNameText}>{lab.name}</Text>
-                    <Text style={styles.labDateText}>{lab.date}</Text>
-                  </View>
-                  <View
-                    style={
-                      lab.status === 'Normal'
-                        ? styles.labPillNormal
-                        : styles.labPillLow
-                    }>
-                    <Text
-                      style={
-                        lab.status === 'Normal'
-                          ? styles.labPillTextNormal
-                          : styles.labPillTextLow
-                      }>
-                      {lab.status}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
-      </ScrollView>
-
-      {/* Sticky Bottom Actions Bar */}
-      <View style={styles.bottomBar}>
-        <Pressable
-          style={styles.barOutlineBtn}
-          onPress={() =>
-            navigation.navigate('Consultation', {
-              appointmentId: route.params.patientId,
-              patientName,
-            })
-          }>
-          <FileText size={14} color={colors.primary} strokeWidth={2} />
-          <Text style={styles.barOutlineBtnText}>Case Sheet</Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.barOutlineBtn}
-          onPress={() =>
-            navigation.navigate('Chat', {
-              appointmentId: route.params.patientId,
-              patientName,
-            })
-          }>
-          <MessageSquare size={14} color={colors.primary} strokeWidth={2} />
-          <Text style={styles.barOutlineBtnText}>Start Chat</Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.barSolidBtn}
-          onPress={() =>
-            navigation.navigate('Prescription', {
-              appointmentId: route.params.patientId,
-              patientName,
-            })
-          }>
-          <Send size={14} color="#FFFFFF" strokeWidth={2} />
-          <Text style={styles.barSolidBtnText}>Send Rx</Text>
-        </Pressable>
-      </View>
+      <ScheduleFollowUpModal
+        visible={showScheduleModal}
+        onClose={() => setShowScheduleModal(false)}
+        patientName={patientName}
+        patientId={String(targetPatientId).slice(-8)}
+        appointmentId={latestAppointmentId}
+        onScheduleSuccess={() => {
+          query.refetch();
+        }}
+      />
     </View>
   );
 }
+
 
 const styles = StyleSheet.create({
   root: {
@@ -459,7 +721,6 @@ const styles = StyleSheet.create({
 
   /* Header Section */
   headerSection: {
-    backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingBottom: 14,
     borderBottomLeftRadius: radius.xl,
@@ -735,6 +996,56 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     marginTop: 2,
   },
+  inlineFollowUp: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 6,
+    backgroundColor: colors.aqua,
+    borderRadius: radius.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  inlineFollowUpText: {
+    flex: 1,
+    fontSize: 10,
+    color: colors.primary,
+    fontWeight: '600',
+    lineHeight: 14,
+  },
+  followUpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  followUpIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.aqua,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followUpIconOverdue: {
+    backgroundColor: colors.dangerBg,
+  },
+  followUpDateText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  followUpTitleText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  followUpNotesText: {
+    fontSize: 10,
+    color: colors.textMuted,
+    lineHeight: 13,
+  },
 
   /* Side-by-Side Summary Row */
   twoColumnRow: {
@@ -915,5 +1226,238 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  btnPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.97 }],
+  },
+  tabChipPressed: {
+    opacity: 0.75,
+    transform: [{ scale: 0.95 }],
+  },
+
+  /* Vitals Container */
+  vitalsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  vitalCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    ...shadows.cardSoft,
+  },
+  vitalIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vitalValueText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  vitalLabelText: {
+    fontSize: 9,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+
+  /* Detailed Cards */
+  tabContentBlock: {
+    gap: 10,
+  },
+  detailCardBlock: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 8,
+    ...shadows.cardSoft,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cardHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  cardDateText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  doctorSubText: {
+    fontSize: 11,
+    color: colors.primaryLight,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  detailSectionDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 2,
+  },
+  infoMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  infoMetaRowColumn: {
+    gap: 3,
+  },
+  metaLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  metaVal: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  clinicalNotesText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  medItemsContainer: {
+    gap: 8,
+  },
+  richMedCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: colors.background,
+    padding: 10,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  medIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.aqua,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  medNameText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  medMetaText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  medDurationText: {
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+
+  /* Rich Labs */
+  richLabCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 10,
+    ...shadows.cardSoft,
+  },
+  labCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  labIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.aqua,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  labDetailName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  labCategoryText: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  labResultBox: {
+    backgroundColor: colors.background,
+    padding: 8,
+    borderRadius: radius.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  resultValueText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  refRangeText: {
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 8,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  emptySub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  emptyInline: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    paddingVertical: 8,
+  },
+  retryBtn: {
+    marginTop: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+  },
+  retryBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,7 @@ import {
   LogOut,
   ChevronDown,
   ChevronRight,
+  CalendarClock,
 } from 'lucide-react-native';
 import { doctorPortalApi } from '../../lib/api';
 import { mapDoctorProfile } from '../../lib/mappers/doctorPortal';
@@ -39,6 +40,7 @@ import {
   uploadDoctorPhoto,
 } from '../../lib/media/doctorPhoto';
 import { colors, radius, spacing, shadows, TAB_BAR_CLEARANCE } from '../../theme';
+import GreenGradientHeader from '../../components/GreenGradientHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
 export function AccountScreen() {
@@ -61,6 +63,14 @@ export function AccountScreen() {
     queryFn: () => doctorPortalApi.getProfile(),
   });
 
+  const profile = mapDoctorProfile(profileQuery.data?.doctor || profileQuery.data);
+
+  useEffect(() => {
+    if (!profile?.notifications) return;
+    setPushEnabled(Boolean(profile.notifications.push));
+    setRemindersEnabled(Boolean(profile.notifications.reminders));
+  }, [profile?.notifications?.push, profile?.notifications?.reminders]);
+
   const photoMut = useMutation({
     mutationFn: async () => {
       const file = await pickDoctorPhoto();
@@ -78,31 +88,44 @@ export function AccountScreen() {
       Alert.alert('Photo update failed', err.message),
   });
 
-  const profile: any =
-    mapDoctorProfile(profileQuery.data?.doctor || profileQuery.data) || {
-      name: partner?.name || 'Dr. Sara Khan',
-      specialty: partner?.specialty || 'Consultant Neurologist',
-      degrees: 'MBBS, FCPS (Neurology)',
-      experience: '12 Years Experience',
-      phone: partner?.phone || '+92 300 1234567',
-      email: partner?.email || 'sara.khan@hospital.com',
-      avatar:
-        'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=200',
-    };
+  const notifMut = useMutation({
+    mutationFn: (prefs: { push: boolean; reminders: boolean }) =>
+      doctorPortalApi.updateProfile({
+        notification_preferences: {
+          ...(profile?.notifications || {}),
+          push: prefs.push,
+          reminders: prefs.reminders,
+          email: prefs.push,
+        },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['doctor-profile'] });
+    },
+    onError: (err: Error) => {
+      Alert.alert('Could not update notifications', err.message);
+      if (profile?.notifications) {
+        setPushEnabled(Boolean(profile.notifications.push));
+        setRemindersEnabled(Boolean(profile.notifications.reminders));
+      }
+    },
+  });
 
-  const rawAvatar = profile.photo_url || profile.avatar || 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=200';
-  const avatarUrl = resolveMediaUrl(rawAvatar) || rawAvatar;
+  const displayName = profile?.name || partner?.name || 'Doctor';
+  const specialty = profile?.specialty || partner?.specialty || '';
+  const experience = profile?.experience
+    ? `${profile.experience} Years Experience`
+    : '';
+  const avatarUrl = resolveMediaUrl(profile?.photoUrl || '') || null;
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       {/* Deep Teal Header */}
-      <View style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
+      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>Account & Profile</Text>
         </View>
-      </View>
+      </GreenGradientHeader>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -110,7 +133,15 @@ export function AccountScreen() {
         {/* Doctor Hero Card */}
         <View style={styles.doctorHeroCard}>
           <View style={styles.avatarWrap}>
-            <Image source={{ uri: avatarUrl }} style={styles.doctorAvatarImg} />
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.doctorAvatarImg} />
+            ) : (
+              <View style={[styles.doctorAvatarImg, styles.avatarFallback]}>
+                <Text style={styles.avatarInitial}>
+                  {displayName.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
             <Pressable
               style={styles.cameraIconBtn}
               onPress={() => photoMut.mutate()}
@@ -122,12 +153,14 @@ export function AccountScreen() {
 
           <View style={styles.doctorMetaCol}>
             <View style={styles.nameBadgeRow}>
-              <Text style={styles.doctorNameText}>{profile.name}</Text>
+              <Text style={styles.doctorNameText}>{displayName}</Text>
               <BadgeCheck size={16} color={colors.primaryLight} strokeWidth={2.5} />
             </View>
 
-            <Text style={styles.specialtyText}>{profile.specialty}</Text>
-            <Text style={styles.credentialsText}>MBBS, FCPS (Neurology) • 12 Yrs Exp</Text>
+            <Text style={styles.specialtyText}>{specialty || 'Specialty not set'}</Text>
+            <Text style={styles.credentialsText}>
+              {[experience, profile?.hospital].filter(Boolean).join(' • ') || 'Complete your profile'}
+            </Text>
 
             <Pressable
               style={styles.editProfilePillBtn}
@@ -202,7 +235,10 @@ export function AccountScreen() {
                   <Text style={styles.toggleLabel}>Push Notifications</Text>
                   <Switch
                     value={pushEnabled}
-                    onValueChange={setPushEnabled}
+                    onValueChange={value => {
+                      setPushEnabled(value);
+                      notifMut.mutate({ push: value, reminders: remindersEnabled });
+                    }}
                     trackColor={{ false: '#CBD5E1', true: colors.primaryLight }}
                     thumbColor={pushEnabled ? colors.primary : '#FFFFFF'}
                   />
@@ -211,7 +247,10 @@ export function AccountScreen() {
                   <Text style={styles.toggleLabel}>Appointment Reminders</Text>
                   <Switch
                     value={remindersEnabled}
-                    onValueChange={setRemindersEnabled}
+                    onValueChange={value => {
+                      setRemindersEnabled(value);
+                      notifMut.mutate({ push: pushEnabled, reminders: value });
+                    }}
                     trackColor={{ false: '#CBD5E1', true: colors.primaryLight }}
                     thumbColor={remindersEnabled ? colors.primary : '#FFFFFF'}
                   />
@@ -231,6 +270,21 @@ export function AccountScreen() {
               <View style={styles.settingsItemTextCol}>
                 <Text style={styles.settingsItemTitle}>Security</Text>
                 <Text style={styles.settingsItemSub}>Password & two-factor authentication</Text>
+              </View>
+              <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+            </Pressable>
+
+            <View style={styles.itemDivider} />
+
+            <Pressable
+              style={styles.settingsItemRow}
+              onPress={() => navigation.navigate('FollowUps')}>
+              <View style={styles.settingsItemIconWrap}>
+                <CalendarClock size={18} color={colors.primary} strokeWidth={2} />
+              </View>
+              <View style={styles.settingsItemTextCol}>
+                <Text style={styles.settingsItemTitle}>Follow-ups</Text>
+                <Text style={styles.settingsItemSub}>Upcoming, overdue & booked recommendations</Text>
               </View>
               <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
             </Pressable>
@@ -340,8 +394,7 @@ const styles = StyleSheet.create({
 
   /* Header Section */
   headerSection: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 20,
+        paddingHorizontal: 20,
     paddingBottom: 14,
     borderBottomLeftRadius: radius.xl,
     borderBottomRightRadius: radius.xl,
@@ -379,6 +432,16 @@ const styles = StyleSheet.create({
     borderRadius: 31,
     borderWidth: 2,
     borderColor: colors.border,
+  },
+  avatarFallback: {
+    backgroundColor: colors.aqua,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.primary,
   },
   cameraIconBtn: {
     position: 'absolute',

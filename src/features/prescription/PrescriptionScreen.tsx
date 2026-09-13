@@ -10,18 +10,15 @@ import {
   Platform,
   StatusBar,
   KeyboardAvoidingView,
-  Image,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
   Copy,
-  Calendar,
   Stethoscope,
-  Brain,
   Pill,
   Check,
   MoreVertical,
@@ -34,6 +31,7 @@ import {
 } from 'lucide-react-native';
 import { doctorPortalApi } from '../../lib/api';
 import { colors, radius, spacing, shadows, TAB_BAR_CLEARANCE } from '../../theme';
+import GreenGradientHeader from '../../components/GreenGradientHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
 interface RxMedicineItem {
@@ -47,28 +45,31 @@ interface RxMedicineItem {
   safetyCheck: string;
 }
 
-const INITIAL_MEDICINES: RxMedicineItem[] = [
-  {
-    id: 'med-1',
-    medicine: 'Tab. Sumatriptan 50 mg',
-    dosage: '1 Tablet',
-    frequency: 'Once a day',
-    duration: '3 Days',
-    instructions: 'Take at the onset of headache. Do not exceed 2 tablets in 24 hours.',
-    status: 'active',
+const EMPTY_MEDICINE: RxMedicineItem = {
+  id: 'med-1',
+  medicine: '',
+  dosage: '1 Tablet',
+  frequency: 'Once a day',
+  duration: '3 Days',
+  instructions: '',
+  status: 'draft',
+  safetyCheck: '',
+};
+
+function mapRxItemsFromApi(prescription: any): RxMedicineItem[] {
+  const items = Array.isArray(prescription?.items) ? prescription.items : [];
+  if (!items.length) return [{ ...EMPTY_MEDICINE, id: `med-${Date.now()}` }];
+  return items.map((item: any, index: number) => ({
+    id: `med-${item.id || index}`,
+    medicine: item.name || item.medicine || '',
+    dosage: item.dosage || item.dose || '1 Tablet',
+    frequency: item.frequency || 'Once a day',
+    duration: item.duration || '3 Days',
+    instructions: item.instructions || '',
+    status: 'active' as const,
     safetyCheck: 'No major interactions found',
-  },
-  {
-    id: 'med-2',
-    medicine: '',
-    dosage: '1 Tablet',
-    frequency: 'Twice daily',
-    duration: '5 Days',
-    instructions: '',
-    status: 'draft',
-    safetyCheck: '',
-  },
-];
+  }));
+}
 
 export function PrescriptionScreen() {
   const navigation =
@@ -81,10 +82,34 @@ export function PrescriptionScreen() {
     Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   );
 
-  const [items, setItems] = useState<RxMedicineItem[]>(INITIAL_MEDICINES);
+  const [items, setItems] = useState<RxMedicineItem[]>([{ ...EMPTY_MEDICINE }]);
   const [notes, setNotes] = useState('');
+  const [hydrated, setHydrated] = useState(false);
 
-  const patientName = route.params.patientName || 'Ayesha Malik';
+  const patientName = route.params.patientName || 'Patient';
+  const appointmentId = route.params.appointmentId;
+
+  const existingRxQuery = useQuery({
+    queryKey: ['doctor-prescription', appointmentId],
+    enabled: Boolean(appointmentId),
+    retry: false,
+    queryFn: () => doctorPortalApi.getPrescription(appointmentId),
+  });
+
+  React.useEffect(() => {
+    if (hydrated) return;
+    const prescription =
+      (existingRxQuery.data as any)?.prescription || existingRxQuery.data;
+    if (prescription && (prescription.items || prescription.notes)) {
+      setItems(mapRxItemsFromApi(prescription));
+      setNotes(prescription.notes || '');
+      setHydrated(true);
+      return;
+    }
+    if (existingRxQuery.isFetched || existingRxQuery.isError) {
+      setHydrated(true);
+    }
+  }, [existingRxQuery.data, existingRxQuery.isFetched, existingRxQuery.isError, hydrated]);
 
   const saveMut = useMutation({
     mutationFn: (sign: boolean) => {
@@ -92,6 +117,7 @@ export function PrescriptionScreen() {
         .filter(i => i.medicine.trim())
         .map(i => ({
           medicine: i.medicine,
+          name: i.medicine,
           dosage: i.dosage,
           frequency: i.frequency,
           duration: i.duration,
@@ -112,6 +138,8 @@ export function PrescriptionScreen() {
     onSuccess: (_data, sign) => {
       queryClient.invalidateQueries({ queryKey: ['doctor-consultation'] });
       queryClient.invalidateQueries({ queryKey: ['doctor-appointments'] });
+      queryClient.invalidateQueries({ queryKey: ['doctor-prescription', appointmentId] });
+      queryClient.invalidateQueries({ queryKey: ['doctor-patient'] });
       Alert.alert(
         sign ? 'Prescription Signed & Issued' : 'Draft Saved',
         sign
@@ -166,29 +194,16 @@ export function PrescriptionScreen() {
       {
         text: 'Clear',
         style: 'destructive',
-        onPress: () =>
-          setItems([
-            {
-              id: 'med-1',
-              medicine: '',
-              dosage: '1 Tablet',
-              frequency: 'Once a day',
-              duration: '3 Days',
-              instructions: '',
-              status: 'draft',
-              safetyCheck: '',
-            },
-          ]),
+        onPress: () => setItems([{ ...EMPTY_MEDICINE, id: `med-${Date.now()}` }]),
       },
     ]);
   };
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       {/* Deep Teal Header */}
-      <View style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
+      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
         <View style={styles.headerRow}>
           <Pressable
             style={styles.headerBackBtn}
@@ -200,7 +215,7 @@ export function PrescriptionScreen() {
           <Text style={styles.headerTitle}>Prescription</Text>
           <View style={{ width: 40 }} />
         </View>
-      </View>
+      </GreenGradientHeader>
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -213,37 +228,28 @@ export function PrescriptionScreen() {
           showsVerticalScrollIndicator={false}>
           {/* Patient Context Hero Card */}
           <View style={styles.patientHeroCard}>
-            <Image
-              source={{
-                uri: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200',
-              }}
-              style={styles.patientAvatar}
-            />
+            <View style={[styles.patientAvatar, styles.patientAvatarFallback]}>
+              <Text style={styles.patientAvatarInitial}>
+                {(patientName || 'P').charAt(0).toUpperCase()}
+              </Text>
+            </View>
 
             <View style={styles.patientMainCol}>
               <Text style={styles.patientName}>{patientName}</Text>
-              <Text style={styles.patientMeta}>32 Years • Female</Text>
+              <Text style={styles.patientMeta}>Linked appointment</Text>
               <View style={styles.consCodeRow}>
-                <Text style={styles.consCodeText}>CONS-2024-0410</Text>
+                <Text style={styles.consCodeText}>
+                  APT-{String(appointmentId || '').slice(0, 8).toUpperCase() || '—'}
+                </Text>
                 <Copy size={11} color={colors.textMuted} strokeWidth={2} />
               </View>
             </View>
 
             <View style={styles.patientRightCol}>
               <View style={styles.metaRowRight}>
-                <Calendar size={12} color={colors.textMuted} strokeWidth={2} />
-                <Text style={styles.metaRightText}>14 Apr 2024 • 10:00 AM</Text>
-              </View>
-              <View style={styles.metaRowRight}>
                 <Stethoscope size={12} color={colors.primary} strokeWidth={2} />
                 <Text style={[styles.metaRightText, { color: colors.primary, fontWeight: '600' }]}>
-                  Follow-up Consultation
-                </Text>
-              </View>
-              <View style={styles.metaRowRight}>
-                <Brain size={12} color={colors.textMuted} strokeWidth={2} />
-                <Text style={styles.metaRightText} numberOfLines={1}>
-                  Migraine, Nausea, Light Sensitivity
+                  {existingRxQuery.data ? 'Existing Rx loaded' : 'New prescription'}
                 </Text>
               </View>
             </View>
@@ -468,8 +474,7 @@ const styles = StyleSheet.create({
 
   /* Header Section */
   headerSection: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 20,
+        paddingHorizontal: 20,
     paddingBottom: 14,
     borderBottomLeftRadius: radius.xl,
     borderBottomRightRadius: radius.xl,
@@ -511,6 +516,16 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  patientAvatarFallback: {
+    backgroundColor: colors.aqua,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  patientAvatarInitial: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.primary,
   },
   patientMainCol: {
     gap: 1,

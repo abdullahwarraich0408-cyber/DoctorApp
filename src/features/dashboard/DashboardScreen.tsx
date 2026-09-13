@@ -33,6 +33,7 @@ import { doctorPortalApi } from '../../lib/api';
 import { mapAppointment, mapDoctorProfile, formatDate } from '../../lib/mappers/doctorPortal';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { StatusChip } from '../../components/StatusChip';
+import GreenGradientHeader from '../../components/GreenGradientHeader';
 import { colors, spacing, radius, shadows, TAB_BAR_CLEARANCE } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -62,10 +63,17 @@ export function DashboardScreen() {
   });
 
   const profile = mapDoctorProfile(profileQuery.data?.doctor || profileQuery.data) || {
-    name: partner?.name || 'Dr. Sara Khan',
-    specialty: partner?.specialty || 'Consultant Neurologist',
+    name: partner?.name || 'Doctor',
+    specialty: partner?.specialty || '',
     photoUrl: null,
     online: true,
+    notifications: {
+      email: true,
+      sms: true,
+      reminders: true,
+      push: true,
+      marketing: false,
+    },
   };
 
   useEffect(() => {
@@ -130,13 +138,11 @@ export function DashboardScreen() {
       return {
         id: found.id,
         name: found.patient || 'Patient',
-        time: found.time || '10:00 AM',
+        time: found.time || '',
         date: found.date || 'Today',
         type: found.type?.toLowerCase().includes('clinic') ? 'In-Clinic' : 'Video Visit',
         priority: found.status === 'in_progress' ? 'In Progress' : 'Confirmed Visit',
-        chiefComplaint: found.reason || 'General Medical Consultation',
-        avatar:
-          'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200',
+        chiefComplaint: found.reason || 'Consultation',
         ageGender: 'Patient',
       };
     }
@@ -144,16 +150,12 @@ export function DashboardScreen() {
   }, [appointments]);
 
   const agendaList = useMemo(() => {
-    return appointments.slice(0, 5).map((a: any, idx: number) => ({
+    return appointments.slice(0, 10).map((a: any) => ({
       id: a.id,
-      patient: a.patient || `Patient ${idx + 1}`,
-      time: a.time || '10:00 AM',
+      patient: a.patient || 'Patient',
+      time: a.time || '',
       mode: a.type?.toLowerCase().includes('clinic') ? 'In-Clinic' : 'Video',
       status: a.status || 'confirmed',
-      avatar:
-        idx % 2 === 0
-          ? 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200'
-          : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
     }));
   }, [appointments]);
 
@@ -161,46 +163,52 @@ export function DashboardScreen() {
   const weeklyData = useMemo(() => {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const currentDayName = new Date().toLocaleDateString('en-US', { weekday: 'short' });
-    const counts = { Mon: 18, Tue: 22, Wed: 28, Thu: 24, Fri: 20, Sat: 16, Sun: 14 };
+    const counts: Record<string, number> = {
+      Mon: 0,
+      Tue: 0,
+      Wed: 0,
+      Thu: 0,
+      Fri: 0,
+      Sat: 0,
+      Sun: 0,
+    };
 
-    // Overlay real appointment counts if available
     appointments.forEach((a: any) => {
       if (a.dateRaw) {
         const d = new Date(a.dateRaw);
         const dayStr = d.toLocaleDateString('en-US', { weekday: 'short' });
         if (dayStr in counts) {
-          counts[dayStr as keyof typeof counts] += 1;
+          counts[dayStr] += 1;
         }
       }
     });
 
     return days.map(d => ({
       day: d,
-      count: counts[d as keyof typeof counts],
+      count: counts[d],
       active: d === currentDayName,
     }));
   }, [appointments]);
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
-
-      {/* Top Deep Teal Header */}
-      <View style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
+      {/* Home header — shared L→R light→dark gradient */}
+      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
+        <View style={styles.headerContent}>
         <View style={styles.headerTopRow}>
           {/* Avatar */}
           <Pressable
             style={styles.avatarWrap}
             onPress={() => (navigation as any).navigate('Profile')}>
-            <Image
-              source={{
-                uri:
-                  (profile as any).photoUrl ||
-                  (profile as any).avatar ||
-                  'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=200',
-              }}
-              style={styles.doctorAvatarImg}
-            />
+            {profile.photoUrl ? (
+              <Image source={{ uri: profile.photoUrl }} style={styles.doctorAvatarImg} />
+            ) : (
+              <View style={[styles.doctorAvatarImg, styles.doctorAvatarFallback]}>
+                <Text style={styles.doctorAvatarInitial}>
+                  {(profile.name || 'D').charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
             <View style={styles.verifiedCheckBadge}>
               <BadgeCheck size={14} color={colors.primaryLight} strokeWidth={2.5} />
             </View>
@@ -210,7 +218,7 @@ export function DashboardScreen() {
           <View style={styles.headerInfoCol}>
             <View style={styles.nameRow}>
               <Text style={styles.doctorNameText} numberOfLines={1}>
-                {profile.name || 'Dr. Sara Khan'}
+                {profile.name || 'Doctor'}
               </Text>
               <BadgeCheck size={16} color={colors.mint} strokeWidth={2.5} />
             </View>
@@ -221,7 +229,7 @@ export function DashboardScreen() {
 
           {/* Notification Bell */}
           <Pressable
-            style={styles.bellButton}
+            style={styles.headerIconBtn}
             onPress={() => navigation.navigate('Notifications')}
             accessibilityLabel="Notifications"
             hitSlop={8}>
@@ -250,17 +258,21 @@ export function DashboardScreen() {
               value={isOnline}
               onValueChange={val => onlineMut.mutate(val)}
               disabled={onlineMut.isPending}
-              trackColor={{ false: '#004E52', true: colors.mint }}
-              thumbColor={isOnline ? '#006D72' : '#FFFFFF'}
+              trackColor={{ false: 'rgba(255,255,255,0.25)', true: colors.mint }}
+              thumbColor={isOnline ? colors.primary : '#FFFFFF'}
               style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
             />
           </View>
         </View>
-      </View>
+        </View>
+      </GreenGradientHeader>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets={true}
         refreshControl={
           <RefreshControl
             refreshing={apptQuery.isRefetching || statsQuery.isRefetching}
@@ -268,48 +280,42 @@ export function DashboardScreen() {
             tintColor={colors.primary}
           />
         }>
-        {/* Practice Summary 4-Column Card */}
-        <View style={styles.summaryCard}>
-          {/* Col 1 */}
-          <View style={styles.summaryCol}>
-            <View style={[styles.summaryIconCircle, { backgroundColor: colors.aqua }]}>
-              <Users size={16} color={colors.primary} strokeWidth={2.2} />
+        {/* Practice summary — featured total + mode breakdown */}
+        <View style={styles.summaryPanel}>
+          <View style={styles.summaryHero}>
+            <Text style={styles.summaryEyebrow}>Today</Text>
+            <Text style={styles.summaryHeroValue}>{stats.todayConsultations}</Text>
+            <Text style={styles.summaryHeroLabel}>Consultations</Text>
+            <View style={styles.summaryRatingChip}>
+              <Star size={12} color={colors.warning} strokeWidth={2.2} fill={colors.warning} />
+              <Text style={styles.summaryRatingText}>{stats.rating}</Text>
             </View>
-            <Text style={styles.summaryValueText}>{stats.todayConsultations}</Text>
-            <Text style={styles.summaryLabelText}>Consultations</Text>
           </View>
 
-          <View style={styles.summaryDivider} />
-
-          {/* Col 2 */}
-          <View style={styles.summaryCol}>
-            <View style={[styles.summaryIconCircle, { backgroundColor: colors.aqua }]}>
-              <Building size={16} color={colors.primary} strokeWidth={2.2} />
+          <View style={styles.summaryModes}>
+            <View style={styles.summaryModeRow}>
+              <View style={[styles.summaryModeIcon, { backgroundColor: colors.mint }]}>
+                <Building size={16} color={colors.primaryDark} strokeWidth={2.2} />
+              </View>
+              <View style={styles.summaryModeCopy}>
+                <Text style={styles.summaryModeLabel}>In-Clinic</Text>
+                <Text style={styles.summaryModeHint}>In-person visits</Text>
+              </View>
+              <Text style={styles.summaryModeValue}>{stats.inClinic}</Text>
             </View>
-            <Text style={styles.summaryValueText}>{stats.inClinic}</Text>
-            <Text style={styles.summaryLabelText}>In-Clinic</Text>
-          </View>
 
-          <View style={styles.summaryDivider} />
+            <View style={styles.summaryModeDivider} />
 
-          {/* Col 3 */}
-          <View style={styles.summaryCol}>
-            <View style={[styles.summaryIconCircle, { backgroundColor: colors.aqua }]}>
-              <Video size={16} color={colors.primary} strokeWidth={2.2} />
+            <View style={styles.summaryModeRow}>
+              <View style={[styles.summaryModeIcon, { backgroundColor: colors.infoBg }]}>
+                <Video size={16} color={colors.info} strokeWidth={2.2} />
+              </View>
+              <View style={styles.summaryModeCopy}>
+                <Text style={styles.summaryModeLabel}>Video</Text>
+                <Text style={styles.summaryModeHint}>Telehealth calls</Text>
+              </View>
+              <Text style={styles.summaryModeValue}>{stats.video}</Text>
             </View>
-            <Text style={styles.summaryValueText}>{stats.video}</Text>
-            <Text style={styles.summaryLabelText}>Video</Text>
-          </View>
-
-          <View style={styles.summaryDivider} />
-
-          {/* Col 4 */}
-          <View style={styles.summaryCol}>
-            <View style={[styles.summaryIconCircle, { backgroundColor: colors.warningBg }]}>
-              <Star size={16} color={colors.warning} strokeWidth={2.2} fill={colors.warning} />
-            </View>
-            <Text style={styles.summaryValueText}>{stats.rating}</Text>
-            <Text style={styles.summaryLabelText}>Rating</Text>
           </View>
         </View>
 
@@ -329,10 +335,11 @@ export function DashboardScreen() {
 
             {/* Patient Details Row */}
             <View style={styles.heroPatientRow}>
-              <Image
-                source={{ uri: nextPatient.avatar }}
-                style={styles.heroPatientAvatar}
-              />
+              <View style={[styles.heroPatientAvatar, styles.avatarFallback]}>
+                <Text style={styles.avatarInitial}>
+                  {(nextPatient.name || 'P').charAt(0).toUpperCase()}
+                </Text>
+              </View>
               <View style={styles.heroPatientMetaCol}>
                 <Text style={styles.heroPatientName}>{nextPatient.name}</Text>
                 <Text style={styles.heroPatientDemographics}>
@@ -416,9 +423,14 @@ export function DashboardScreen() {
         {/* Today's Agenda Section */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitleText}>Today's Agenda</Text>
-          <Pressable onPress={() => (navigation as any).navigate('Appointments')}>
-            <Text style={styles.sectionLinkText}>See All &gt;</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+            <Pressable onPress={() => navigation.navigate('FollowUps')}>
+              <Text style={styles.sectionLinkText}>Follow-ups</Text>
+            </Pressable>
+            <Pressable onPress={() => (navigation as any).navigate('Appointments')}>
+              <Text style={styles.sectionLinkText}>See All &gt;</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.agendaCard}>
@@ -428,34 +440,48 @@ export function DashboardScreen() {
               <Text style={styles.emptyAgendaText}>No appointments scheduled on your agenda</Text>
             </View>
           ) : (
-            agendaList.map((item: any, idx: number) => {
-              const isLast = idx === agendaList.length - 1;
-              return (
-                <Pressable
-                  key={item.id}
-                  style={[styles.agendaRow, !isLast && styles.agendaRowBorder]}
-                  onPress={() =>
-                    navigation.navigate('AppointmentDetail', {
-                      appointmentId: item.id,
-                    })
-                  }>
-                  <Image source={{ uri: item.avatar }} style={styles.agendaAvatar} />
-
-                  <View style={styles.agendaInfoCol}>
-                    <Text style={styles.agendaPatientName}>{item.patient}</Text>
-                    <View style={styles.agendaMetaRow}>
-                      <Clock size={11} color={colors.textMuted} strokeWidth={2} />
-                      <Text style={styles.agendaTimeText}>{item.time}</Text>
-                      <Text style={styles.agendaDot}>•</Text>
-                      <Text style={styles.agendaModeText}>{item.mode}</Text>
+            <ScrollView
+              style={styles.agendaScroll}
+              contentContainerStyle={styles.agendaScrollContent}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              automaticallyAdjustKeyboardInsets={true}
+              bounces={agendaList.length > 3}>
+              {agendaList.map((item: any, idx: number) => {
+                const isLast = idx === agendaList.length - 1;
+                return (
+                  <Pressable
+                    key={item.id}
+                    style={[styles.agendaRow, !isLast && styles.agendaRowBorder]}
+                    onPress={() =>
+                      navigation.navigate('AppointmentDetail', {
+                        appointmentId: item.id,
+                      })
+                    }>
+                    <View style={[styles.agendaAvatar, styles.avatarFallback]}>
+                      <Text style={styles.avatarInitialSmall}>
+                        {(item.patient || 'P').charAt(0).toUpperCase()}
+                      </Text>
                     </View>
-                  </View>
 
-                  <StatusChip status={item.status} />
-                  <ChevronRight size={16} color={colors.textMuted} strokeWidth={2} />
-                </Pressable>
-              );
-            })
+                    <View style={styles.agendaInfoCol}>
+                      <Text style={styles.agendaPatientName}>{item.patient}</Text>
+                      <View style={styles.agendaMetaRow}>
+                        <Clock size={11} color={colors.textMuted} strokeWidth={2} />
+                        <Text style={styles.agendaTimeText}>{item.time}</Text>
+                        <Text style={styles.agendaDot}>•</Text>
+                        <Text style={styles.agendaModeText}>{item.mode}</Text>
+                      </View>
+                    </View>
+
+                    <StatusChip status={item.status} />
+                    <ChevronRight size={16} color={colors.textMuted} strokeWidth={2} />
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           )}
         </View>
 
@@ -464,7 +490,7 @@ export function DashboardScreen() {
           <Text style={styles.sectionTitleText}>Weekly Overview</Text>
           <View style={styles.weeklyGrowthPill}>
             <TrendingUp size={12} color={colors.success} strokeWidth={2.2} />
-            <Text style={styles.weeklyGrowthText}>+18% vs Last Week</Text>
+            <Text style={styles.weeklyGrowthText}>From your appointments</Text>
           </View>
         </View>
 
@@ -516,14 +542,26 @@ const styles = StyleSheet.create({
     gap: 14,
   },
 
-  /* Header Section */
+  /* Header — shared GreenGradientHeader fill */
   headerSection: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 20,
     paddingBottom: 14,
     borderBottomLeftRadius: radius.xl,
     borderBottomRightRadius: radius.xl,
-    gap: 12,
+  },
+  headerContent: {
+    paddingHorizontal: 20,
+    gap: 10,
+  },
+
+  /* Live Online/Offline Bar */
+  liveBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: radius.pill,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
   },
   headerTopRow: {
     flexDirection: 'row',
@@ -539,6 +577,31 @@ const styles = StyleSheet.create({
     borderRadius: 23,
     borderWidth: 2,
     borderColor: '#FFFFFF',
+  },
+  doctorAvatarFallback: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doctorAvatarInitial: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 18,
+  },
+  avatarFallback: {
+    backgroundColor: colors.aqua,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  avatarInitialSmall: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
   },
   verifiedCheckBadge: {
     position: 'absolute',
@@ -567,7 +630,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.85)',
   },
-  bellButton: {
+  headerIconBtn: {
     width: 38,
     height: 38,
     borderRadius: 19,
@@ -588,18 +651,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
 
-  /* Live Online/Offline Bar */
-  liveBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(0, 78, 82, 0.85)',
-    borderRadius: radius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: 'rgba(221, 246, 242, 0.25)',
-  },
+
   liveLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -614,12 +666,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.mint,
   },
   liveStatusDotOff: {
-    backgroundColor: colors.textMuted,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
   },
   liveText: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.mint,
+    color: '#FFFFFF',
   },
   switchWrapper: {
     flexDirection: 'row',
@@ -628,59 +680,121 @@ const styles = StyleSheet.create({
   },
   switchLabel: {
     fontSize: 10,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.75)',
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.9)',
   },
 
-  /* Summary Card */
-  summaryCard: {
+  /* Practice summary panel */
+  summaryPanel: {
+    flexDirection: 'row',
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    overflow: 'hidden',
     ...shadows.card,
   },
-  summaryCol: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 3,
-  },
-  summaryIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
+  summaryHero: {
+    width: '38%',
+    backgroundColor: colors.aqua,
+    borderRightWidth: 1,
+    borderRightColor: '#B4E8E1',
+    paddingVertical: 16,
+    paddingHorizontal: 14,
     justifyContent: 'center',
-    marginBottom: 2,
+    gap: 2,
   },
-  summaryValueText: {
-    fontSize: 16,
+  summaryEyebrow: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  summaryHeroValue: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: colors.primaryDark,
+    letterSpacing: -1,
+    marginTop: 2,
+  },
+  summaryHeroLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  summaryRatingChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 10,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  summaryRatingText: {
+    fontSize: 12,
     fontWeight: '700',
     color: colors.textPrimary,
   },
-  summaryLabelText: {
-    fontSize: 10,
+  summaryModes: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    gap: 8,
+  },
+  summaryModeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  summaryModeIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryModeCopy: {
+    flex: 1,
+    gap: 1,
+  },
+  summaryModeLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  summaryModeHint: {
+    fontSize: 11,
     fontWeight: '500',
     color: colors.textMuted,
   },
-  summaryDivider: {
-    width: 1,
-    height: 40,
+  summaryModeValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    letterSpacing: -0.4,
+    minWidth: 28,
+    textAlign: 'right',
+  },
+  summaryModeDivider: {
+    height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
+    marginLeft: 44,
   },
 
-  /* Dominant Next Patient Hero Card */
+  /* Dominant Next Patient Hero Card — clear teal theme */
   heroCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.aqua,
     borderRadius: radius.xl,
     padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 1.5,
+    borderColor: '#B4E8E1',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
     gap: 12,
     ...shadows.cardElevated,
   },
@@ -710,7 +824,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dangerBg,
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: radius.xs,
+    borderRadius: radius.pill,
   },
   priorityBadgeText: {
     fontSize: 10,
@@ -726,8 +840,8 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 2,
+    borderColor: colors.primary,
   },
   heroPatientMetaCol: {
     flex: 1,
@@ -755,17 +869,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   complaintBox: {
-    backgroundColor: colors.background,
-    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
     padding: 10,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#B4E8E1',
     gap: 2,
   },
   complaintLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: colors.textSecondary,
+    color: colors.primary,
     textTransform: 'uppercase',
   },
   complaintText: {
@@ -800,7 +914,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
@@ -851,7 +965,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: 12,
+    overflow: 'hidden',
     ...shadows.cardSoft,
+  },
+  agendaScroll: {
+    maxHeight: 240,
+  },
+  agendaScrollContent: {
+    paddingBottom: 4,
   },
   agendaRow: {
     flexDirection: 'row',
@@ -954,11 +1075,13 @@ const styles = StyleSheet.create({
 
   /* Empty State Styles */
   emptyHeroCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.aqua,
     borderRadius: radius.xl,
     padding: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 1.5,
+    borderColor: '#B4E8E1',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -968,7 +1091,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.aqua,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 2,

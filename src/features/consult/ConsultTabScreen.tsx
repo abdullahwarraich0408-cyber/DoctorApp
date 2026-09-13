@@ -24,6 +24,7 @@ import { doctorPortalApi } from '../../lib/api';
 import { mapAppointment } from '../../lib/mappers/doctorPortal';
 import { StatusChip } from '../../components/StatusChip';
 import { colors, radius, spacing, shadows, TAB_BAR_CLEARANCE } from '../../theme';
+import GreenGradientHeader from '../../components/GreenGradientHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
 export function ConsultTabScreen() {
@@ -56,13 +57,12 @@ export function ConsultTabScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: topInset + 12 }]}>
+      <GreenGradientHeader style={[styles.header, { paddingTop: topInset + 12 }]}>
         <Text style={styles.headerTitle}>Live Consultations</Text>
         <Text style={styles.headerSub}>Telehealth room & virtual clinical care center</Text>
-      </View>
+      </GreenGradientHeader>
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -192,7 +192,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingBottom: 16,
     borderBottomLeftRadius: radius.xl,

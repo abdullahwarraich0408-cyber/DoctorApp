@@ -9,7 +9,6 @@ import {
   TextInput,
   Platform,
   StatusBar,
-  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -31,6 +30,7 @@ import { doctorPortalApi } from '../../lib/api';
 import { mapAppointment } from '../../lib/mappers/doctorPortal';
 import { StatusChip } from '../../components/StatusChip';
 import { colors, radius, spacing, shadows, TAB_BAR_CLEARANCE } from '../../theme';
+import GreenGradientHeader from '../../components/GreenGradientHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
 function getWeekDays() {
@@ -55,64 +55,34 @@ function getWeekDays() {
   return days;
 }
 
-const SAMPLE_APPOINTMENTS = [
-  {
-    id: 'appt-1',
-    time: '09:30 AM',
-    patient: 'Ayesha Malik',
-    age: 32,
-    gender: 'Female',
-    reason: 'Migraine, Nausea, Light Sensitivity',
-    type: 'Video Visit',
-    isFeePaid: true,
-    status: 'confirmed',
-    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200',
-  },
-  {
-    id: 'appt-2',
-    time: '10:45 AM',
-    patient: 'Bilal Ahmed',
-    age: 45,
-    gender: 'Male',
-    reason: 'Hypertension regular follow-up',
-    type: 'In-Clinic',
-    isFeePaid: true,
-    status: 'in_progress',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
-  },
-  {
-    id: 'appt-3',
-    time: '11:30 AM',
-    patient: 'Zainab Fatima',
-    age: 68,
-    gender: 'Female',
-    reason: 'Type-2 Diabetes Routine Review',
-    type: 'In-Clinic',
-    isFeePaid: true,
-    status: 'confirmed',
-    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200',
-  },
-  {
-    id: 'appt-4',
-    time: '02:15 PM',
-    patient: 'Hamza Ali',
-    age: 28,
-    gender: 'Male',
-    reason: 'Seasonal Allergy & Mild Asthma',
-    type: 'Video Visit',
-    isFeePaid: false,
-    status: 'confirmed',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200',
-  },
-];
-
 const STATUS_TABS = [
   { key: 'all', label: 'All' },
+  { key: 'pending', label: 'Pending' },
   { key: 'today', label: 'Today' },
   { key: 'upcoming', label: 'Upcoming' },
   { key: 'completed', label: 'Completed' },
   { key: 'cancelled', label: 'Cancelled' },
 ];
+
+const OPEN_STATUSES = new Set([
+  'pending',
+  'booked',
+  'confirmed',
+  'checked_in',
+  'in_progress',
+]);
+
+function toLocalDateKey(value?: string | Date | null) {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    return String(value).slice(0, 10);
+  }
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 export function AppointmentsScreen() {
   const navigation =
@@ -123,7 +93,7 @@ export function AppointmentsScreen() {
     Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   );
 
-  const [activeStatusTab, setActiveStatusTab] = useState('all');
+  const [activeStatusTab, setActiveStatusTab] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
 
@@ -135,6 +105,7 @@ export function AppointmentsScreen() {
   const query = useQuery({
     queryKey: ['doctor-appointments'],
     queryFn: () => doctorPortalApi.getAppointments(),
+    refetchInterval: 15_000,
   });
 
   const allAppointments = useMemo(() => {
@@ -144,38 +115,61 @@ export function AppointmentsScreen() {
         : query.data?.appointments || []
     ).map(mapAppointment);
 
-    return raw.map((a: any, idx: number) => ({
+    return raw.map((a: any) => ({
       id: a.id,
-      time: a.time || '10:00 AM',
-      patient: a.patient || `Patient ${idx + 1}`,
-      age: a.raw?.customer?.profile_data?.age || 32,
-      gender: a.raw?.customer?.profile_data?.gender || (idx % 2 === 0 ? 'Female' : 'Male'),
-      reason: a.reason || 'General Medical Consultation',
-      type: a.type?.toLowerCase().includes('clinic') ? 'In-Clinic' : 'Video Visit',
+      time: a.time || '',
+      patient: a.patient || 'Patient',
+      age: a.raw?.customer?.profile_data?.age || a.raw?.customer?.age || null,
+      gender:
+        a.raw?.customer?.profile_data?.gender || a.raw?.customer?.gender || null,
+      reason: a.reason || 'Consultation',
+      type: a.type?.toLowerCase().includes('clinic') ? 'In-Clinic' : a.type || 'Consult',
       isFeePaid: Boolean(a.paymentStatus === 'paid' || a.raw?.payment_status === 'paid'),
-      status: a.status || 'confirmed',
-      avatar:
-        idx % 2 === 0
-          ? 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200'
-          : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
+      status: a.status || 'pending',
+      dateRaw: a.dateRaw,
+      dateKey: toLocalDateKey(a.dateRaw),
     }));
   }, [query.data]);
 
+  const weekDaysWithMarks = useMemo(() => {
+    const marked = new Set(
+      allAppointments.map((a: { dateKey: string }) => a.dateKey).filter(Boolean),
+    );
+    return weekDays.map(day => ({
+      ...day,
+      hasAppointments: marked.has(day.dateStr),
+    }));
+  }, [weekDays, allAppointments]);
+
   const filteredAppointments = useMemo(() => {
     let list = allAppointments;
+    const todayKey = toLocalDateKey(new Date());
 
-    if (activeStatusTab === 'today') {
+    if (activeStatusTab === 'pending') {
       list = list.filter(
-        (a: any) => a.status === 'confirmed' || a.status === 'in_progress',
+        (a: any) => a.status === 'pending' || a.status === 'booked',
+      );
+    } else if (activeStatusTab === 'today') {
+      list = list.filter(
+        (a: any) =>
+          a.dateKey === todayKey &&
+          (OPEN_STATUSES.has(a.status) || a.status === 'completed'),
       );
     } else if (activeStatusTab === 'upcoming') {
       list = list.filter(
-        (a: any) => a.status === 'upcoming' || a.status === 'confirmed',
+        (a: any) => OPEN_STATUSES.has(a.status) && a.dateKey >= todayKey,
       );
     } else if (activeStatusTab === 'completed') {
       list = list.filter((a: any) => a.status === 'completed');
     } else if (activeStatusTab === 'cancelled') {
-      list = list.filter((a: any) => a.status === 'cancelled');
+      list = list.filter(
+        (a: any) => a.status === 'cancelled' || a.status === 'no_show',
+      );
+    }
+
+    // Week strip only narrows the All tab
+    if (selectedDate && activeStatusTab === 'all') {
+      list = list.filter((a: any) => a.dateKey === selectedDate);
     }
 
     if (searchQuery.trim()) {
@@ -188,14 +182,13 @@ export function AppointmentsScreen() {
     }
 
     return list;
-  }, [allAppointments, activeStatusTab, searchQuery]);
+  }, [allAppointments, activeStatusTab, searchQuery, selectedDate]);
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       {/* Top Deep Teal Header */}
-      <View style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
+      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>Appointments</Text>
 
@@ -265,7 +258,7 @@ export function AppointmentsScreen() {
             })}
           </ScrollView>
         </View>
-      </View>
+      </GreenGradientHeader>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -279,7 +272,7 @@ export function AppointmentsScreen() {
         }>
         {/* Horizontal 7-Day Week Selector Strip */}
         <View style={styles.weekCalendarCard}>
-          {weekDays.map(item => {
+          {weekDaysWithMarks.map(item => {
             const isSelected = selectedDate === item.dateStr;
             return (
               <Pressable
@@ -371,20 +364,32 @@ export function AppointmentsScreen() {
                       <Text style={styles.cardModeText}>{appt.type}</Text>
                     </View>
 
+                    {appt.isFollowUp ? (
+                      <View style={styles.followUpBadge}>
+                        <Text style={styles.followUpBadgeText}>FOLLOW-UP</Text>
+                      </View>
+                    ) : null}
+
                     <StatusChip status={appt.status} />
                   </View>
 
                   {/* Patient Info Row */}
                   <View style={styles.cardPatientRow}>
-                    <Image
-                      source={{ uri: appt.avatar }}
-                      style={styles.patientAvatar}
-                    />
+                    <View style={[styles.patientAvatar, styles.patientAvatarFallback]}>
+                      <Text style={styles.patientAvatarInitial}>
+                        {(appt.patient || 'P').charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
 
                     <View style={styles.patientInfoCol}>
                       <Text style={styles.patientNameText}>{appt.patient}</Text>
                       <Text style={styles.patientDemographicsText}>
-                        {appt.age} Y • {appt.gender}
+                        {[
+                          appt.age ? `${appt.age} Y` : null,
+                          appt.gender || null,
+                        ]
+                          .filter(Boolean)
+                          .join(' • ') || 'Patient'}
                       </Text>
                       <Text style={styles.reasonText} numberOfLines={1}>
                         {appt.reason}
@@ -451,8 +456,7 @@ const styles = StyleSheet.create({
 
   /* Header Section */
   headerSection: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 20,
+        paddingHorizontal: 20,
     paddingBottom: 14,
     borderBottomLeftRadius: radius.xl,
     borderBottomRightRadius: radius.xl,
@@ -651,6 +655,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primary,
   },
+  followUpBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.xs,
+  },
+  followUpBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#B45309',
+    letterSpacing: 0.3,
+  },
   cardPatientRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -662,6 +678,16 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  patientAvatarFallback: {
+    backgroundColor: colors.aqua,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  patientAvatarInitial: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primary,
   },
   patientInfoCol: {
     flex: 1,

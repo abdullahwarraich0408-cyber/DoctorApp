@@ -25,6 +25,7 @@ import {
 import { doctorPortalApi } from '../../lib/api';
 import { formatDate } from '../../lib/mappers/doctorPortal';
 import { colors, radius, spacing, shadows } from '../../theme';
+import GreenGradientHeader from '../../components/GreenGradientHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
 type NotificationItem = {
@@ -37,43 +38,15 @@ type NotificationItem = {
   appointmentId?: string;
 };
 
-const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: '1',
-    type: 'appointment',
-    title: 'New Appointment Request',
-    message: 'Tariq Mehmood booked a video consultation for today at 04:30 PM.',
-    time: '10 mins ago',
-    read: false,
-    appointmentId: '1',
-  },
-  {
-    id: '2',
-    type: 'chat',
-    title: 'New Message from Patient',
-    message: 'Ayesha Khan: "Doctor, can I take the medicine after dinner?"',
-    time: '25 mins ago',
-    read: false,
-    appointmentId: '2',
-  },
-  {
-    id: '3',
-    type: 'video',
-    title: 'Consultation Starting Soon',
-    message: 'Your video consultation with Zainab Malik starts in 15 minutes.',
-    time: '1 hour ago',
-    read: true,
-    appointmentId: '3',
-  },
-  {
-    id: '4',
-    type: 'system',
-    title: 'Schedule Updated',
-    message: 'Your weekly availability for HealthCare Clinic was saved successfully.',
-    time: '3 hours ago',
-    read: true,
-  },
-];
+function resolveNotificationType(item: any): NotificationItem['type'] {
+  const raw = String(item.type || item.category || '').toLowerCase();
+  if (raw.includes('video') || raw.includes('consult')) return 'video';
+  if (raw.includes('chat') || raw.includes('message')) return 'chat';
+  if (raw.includes('appointment') || item.data?.appointment_id || item.appointment_id) {
+    return 'appointment';
+  }
+  return 'system';
+}
 
 export function NotificationsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -105,18 +78,16 @@ export function NotificationsScreen() {
 
   const notifications: NotificationItem[] = useMemo(() => {
     const raw = query.data?.notifications || query.data?.inbox || query.data;
-    if (Array.isArray(raw) && raw.length > 0) {
-      return raw.map((item: any) => ({
-        id: String(item.id),
-        type: item.type || (item.data?.appointment_id ? 'appointment' : 'system'),
-        title: item.title || 'Notification',
-        message: item.message || item.body || '',
-        time: formatDate(item.created_at || item.createdAt) || 'Just now',
-        read: Boolean(item.is_read || item.read),
-        appointmentId: item.data?.appointment_id || item.appointment_id,
-      }));
-    }
-    return DEFAULT_NOTIFICATIONS;
+    if (!Array.isArray(raw)) return [];
+    return raw.map((item: any) => ({
+      id: String(item.id),
+      type: resolveNotificationType(item),
+      title: item.title || 'Notification',
+      message: item.message || item.body || '',
+      time: formatDate(item.created_at || item.createdAt) || 'Just now',
+      read: Boolean(item.is_read ?? item.read),
+      appointmentId: item.data?.appointment_id || item.appointment_id,
+    }));
   }, [query.data]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -145,10 +116,9 @@ export function NotificationsScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: topInset + 8 }]}>
+      <GreenGradientHeader style={[styles.header, { paddingTop: topInset + 8 }]}>
         <View style={styles.headerRow}>
           <Pressable
             style={styles.backBtn}
@@ -175,7 +145,7 @@ export function NotificationsScreen() {
             </Pressable>
           )}
         </View>
-      </View>
+      </GreenGradientHeader>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -187,33 +157,43 @@ export function NotificationsScreen() {
             tintColor={colors.primary}
           />
         }>
-        {notifications.map(item => (
-          <Pressable
-            key={item.id}
-            style={[styles.card, !item.read && styles.cardUnread]}
-            onPress={() => handleNotificationPress(item)}>
-            <View style={[styles.iconWrap, !item.read && styles.iconWrapUnread]}>
-              {getNotificationIcon(item.type)}
-            </View>
-
-            <View style={styles.contentCol}>
-              <View style={styles.titleRow}>
-                <Text style={[styles.title, !item.read && styles.titleUnread]}>
-                  {item.title}
-                </Text>
-                {!item.read && <View style={styles.unreadDot} />}
+        {notifications.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Bell size={28} color={colors.textMuted} strokeWidth={2} />
+            <Text style={styles.emptyTitle}>You're all caught up</Text>
+            <Text style={styles.emptySub}>
+              New appointment and system notifications will appear here.
+            </Text>
+          </View>
+        ) : (
+          notifications.map(item => (
+            <Pressable
+              key={item.id}
+              style={[styles.card, !item.read && styles.cardUnread]}
+              onPress={() => handleNotificationPress(item)}>
+              <View style={[styles.iconWrap, !item.read && styles.iconWrapUnread]}>
+                {getNotificationIcon(item.type)}
               </View>
 
-              <Text style={styles.message} numberOfLines={2}>
-                {item.message}
-              </Text>
+              <View style={styles.contentCol}>
+                <View style={styles.titleRow}>
+                  <Text style={[styles.title, !item.read && styles.titleUnread]}>
+                    {item.title}
+                  </Text>
+                  {!item.read && <View style={styles.unreadDot} />}
+                </View>
 
-              <Text style={styles.time}>{item.time}</Text>
-            </View>
+                <Text style={styles.message} numberOfLines={2}>
+                  {item.message}
+                </Text>
 
-            <ChevronRight size={16} color={colors.textMuted} strokeWidth={2} />
-          </Pressable>
-        ))}
+                <Text style={styles.time}>{item.time}</Text>
+              </View>
+
+              <ChevronRight size={16} color={colors.textMuted} strokeWidth={2} />
+            </Pressable>
+          ))
+        )}
       </ScrollView>
     </View>
   );
@@ -225,7 +205,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingBottom: 14,
     borderBottomLeftRadius: radius.xl,
@@ -340,5 +319,24 @@ const styles = StyleSheet.create({
   time: {
     fontSize: 10,
     color: colors.textMuted,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginTop: 4,
+  },
+  emptySub: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

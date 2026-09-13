@@ -93,9 +93,7 @@ export function BottomTabBar({ state, navigation, descriptors }: BottomTabBarPro
       <View
         style={[styles.wrapper, { paddingBottom: bottomPad }]}
         pointerEvents="box-none">
-        
         <View style={styles.floatingBarContainer} pointerEvents="box-none">
-          {/* White Bottom Bar */}
           <View style={styles.floatingBar}>
             <View style={styles.barInner}>
               {TABS.map((tab, index) => {
@@ -107,7 +105,11 @@ export function BottomTabBar({ state, navigation, descriptors }: BottomTabBarPro
                 if (tab.isCenter) {
                   return (
                     <View key={tab.name} style={styles.centerSpacerCell}>
-                      <Text style={[styles.centerLabel, isCenterFocused && styles.centerLabelActive]}>
+                      <Text
+                        style={[
+                          styles.centerLabel,
+                          isCenterFocused && styles.centerLabelActive,
+                        ]}>
                         {tab.label}
                       </Text>
                     </View>
@@ -157,7 +159,6 @@ export function BottomTabBar({ state, navigation, descriptors }: BottomTabBarPro
             </View>
           </View>
 
-          {/* Elevated Floating Center Consult Button */}
           <View style={styles.centerFloatingOverlay} pointerEvents="box-none">
             <Pressable
               onPress={() => handleTabPress(centerIndex, isCenterFocused)}
@@ -170,16 +171,11 @@ export function BottomTabBar({ state, navigation, descriptors }: BottomTabBarPro
                   styles.centerBtn,
                   isCenterFocused && styles.centerBtnActive,
                 ]}>
-                <Video
-                  size={24}
-                  color="#FFFFFF"
-                  strokeWidth={2.2}
-                />
+                <Video size={24} color="#FFFFFF" strokeWidth={2.2} />
               </View>
             </Pressable>
           </View>
         </View>
-
       </View>
     </View>
   );
@@ -230,11 +226,12 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   iconWrap: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.sm,
+    borderRadius: radius.pill,
+    overflow: 'hidden',
   },
   iconWrapActive: {
     backgroundColor: colors.aqua,
