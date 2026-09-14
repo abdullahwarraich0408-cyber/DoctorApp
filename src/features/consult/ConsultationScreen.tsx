@@ -305,6 +305,17 @@ export function ConsultationScreen() {
   const caseId = String(appointmentId || '2024').slice(-6).toUpperCase();
   const appointmentStatus = String(appointment?.status || '').toLowerCase();
   const isAlreadyCompleted = appointmentStatus === 'completed';
+  const consultMode = String(
+    appointment?.consultation_mode ||
+      appointment?.preferred_consultation_mode ||
+      '',
+  ).toLowerCase();
+  const isOnlineVisit =
+    consultMode === 'online' ||
+    (!consultMode.includes('in_person') &&
+      !consultMode.includes('in_clinic') &&
+      Boolean(appointment?.meeting_id));
+  const showVideoSession = isOnlineVisit && !isAlreadyCompleted;
 
   return (
     <View style={styles.root}>
@@ -360,19 +371,27 @@ export function ConsultationScreen() {
                   {patientName}
                 </Text>
                 <Text style={styles.patientHeroSub}>
-                  {isAlreadyCompleted ? 'Completed visit' : 'Active consultation'}
+                  {isAlreadyCompleted
+                    ? 'Completed visit'
+                    : isOnlineVisit
+                      ? 'Active consultation'
+                      : 'In-clinic visit'}
                 </Text>
                 <View style={styles.patientTagRow}>
                   <View style={styles.patientTag}>
                     <Text style={styles.patientTagText}>
-                      {isAlreadyCompleted ? 'Completed' : 'Active consult'}
+                      {isAlreadyCompleted
+                        ? 'Completed'
+                        : isOnlineVisit
+                          ? 'Online consult'
+                          : 'Clinic visit'}
                     </Text>
                   </View>
                 </View>
               </View>
             </View>
 
-            {!isAlreadyCompleted ? (
+            {showVideoSession ? (
               <Pressable
                 style={styles.videoLaunchBtn}
                 onPress={() =>
