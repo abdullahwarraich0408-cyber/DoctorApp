@@ -27,7 +27,7 @@ import {
 import { doctorPortalApi } from '../../lib/api';
 import { mapDoctorProfile } from '../../lib/mappers/doctorPortal';
 import { colors, radius, spacing, shadows } from '../../theme';
-import GreenGradientHeader from '../../components/GreenGradientHeader';
+import TabScreenHeader from '../../components/TabScreenHeader';
 
 export function SettingsScreen() {
   const navigation = useNavigation();
@@ -104,21 +104,7 @@ export function SettingsScreen() {
 
   return (
     <View style={styles.root}>
-
-      {/* Header */}
-      <GreenGradientHeader style={[styles.header, { paddingTop: topInset + 8 }]}>
-        <View style={styles.headerRow}>
-          <Pressable
-            style={styles.backBtn}
-            onPress={() => navigation.goBack()}
-            accessibilityLabel="Go back"
-            hitSlop={8}>
-            <ArrowLeft size={22} color="#FFFFFF" strokeWidth={2.2} />
-          </Pressable>
-          <Text style={styles.headerTitle}>Profile & Practice Settings</Text>
-          <View style={{ width: 40 }} />
-        </View>
-      </GreenGradientHeader>
+      <TabScreenHeader showBack title="Profile & Practice Settings" />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}

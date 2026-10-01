@@ -7,7 +7,7 @@ import { Platform } from 'react-native';
  */
 export const PRODUCTION_API = 'https://backend.medzoos.com/api';
 
-const LOCAL_API_PORT = 5001;
+const LOCAL_API_PORT = 5000;
 const LOCAL_ANDROID_USB = `http://127.0.0.1:${LOCAL_API_PORT}/api`;
 const LOCAL_ANDROID_EMULATOR = `http://10.0.2.2:${LOCAL_API_PORT}/api`;
 const LOCAL_IOS = `http://localhost:${LOCAL_API_PORT}/api`;
@@ -21,7 +21,8 @@ const USE_LOCAL_API_IN_DEV = true;
 
 export const USE_LOCAL_API = __DEV__ && USE_LOCAL_API_IN_DEV;
 
-export const ANDROID_CONNECTION: 'usb' | 'wifi' | 'emulator' = 'emulator';
+/** Physical device over USB + `adb reverse` (see `npm run connect:android`). Use `emulator` for AVD. */
+export const ANDROID_CONNECTION: 'usb' | 'wifi' | 'emulator' = 'usb';
 export const LOCAL_DEV_HOST = '172.31.2.189';
 
 export function getApiBaseUrl(): string {

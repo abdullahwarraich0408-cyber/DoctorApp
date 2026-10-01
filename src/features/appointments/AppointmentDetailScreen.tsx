@@ -39,7 +39,7 @@ import { doctorPortalApi } from '../../lib/api';
 import { formatDate, mapAppointment } from '../../lib/mappers/doctorPortal';
 import { StatusChip } from '../../components/StatusChip';
 import { colors, radius, shadows, TAB_BAR_CLEARANCE } from '../../theme';
-import GreenGradientHeader from '../../components/GreenGradientHeader';
+import TabScreenHeader from '../../components/TabScreenHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
 function formatStepperDate(value?: string | null) {
@@ -273,22 +273,11 @@ export function AppointmentDetailScreen() {
 
   return (
     <View style={styles.root}>
-
-      {/* Header Bar */}
-      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
-        <View style={styles.headerRow}>
-          <Pressable
-            style={styles.headerBackBtn}
-            onPress={() => navigation.goBack()}
-            accessibilityLabel="Go back"
-            hitSlop={8}>
-            <ArrowLeft size={22} color="#FFFFFF" strokeWidth={2.2} />
-          </Pressable>
-
-          <Text style={styles.headerTitle}>Appointment Details</Text>
-          <StatusChip status={appointment.status} />
-        </View>
-      </GreenGradientHeader>
+      <TabScreenHeader
+        showBack
+        title="Appointment Details"
+        right={<StatusChip status={appointment.status} />}
+      />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -1099,7 +1088,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.aqua,
     paddingHorizontal: 12,
     paddingVertical: 5,
-    borderRadius: radius.full,
+    borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.mint,
   },

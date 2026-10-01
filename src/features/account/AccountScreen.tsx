@@ -8,13 +8,10 @@ import {
   ScrollView,
   Image,
   Switch,
-  Platform,
-  StatusBar,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   BadgeCheck,
   Camera,
@@ -40,7 +37,7 @@ import {
   uploadDoctorPhoto,
 } from '../../lib/media/doctorPhoto';
 import { colors, radius, spacing, shadows, TAB_BAR_CLEARANCE } from '../../theme';
-import GreenGradientHeader from '../../components/GreenGradientHeader';
+import TabScreenHeader from '../../components/TabScreenHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
 export function AccountScreen() {
@@ -48,11 +45,6 @@ export function AccountScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const queryClient = useQueryClient();
-  const insets = useSafeAreaInsets();
-  const topInset = Math.max(
-    insets.top,
-    Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
-  );
 
   const [notificationsExpanded, setNotificationsExpanded] = useState(true);
   const [pushEnabled, setPushEnabled] = useState(true);
@@ -121,11 +113,7 @@ export function AccountScreen() {
     <View style={styles.root}>
 
       {/* Deep Teal Header */}
-      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
-        <View style={styles.headerRow}>
-          <Text style={styles.headerTitle}>Account & Profile</Text>
-        </View>
-      </GreenGradientHeader>
+      <TabScreenHeader title="Account & Profile" />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -390,25 +378,6 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: TAB_BAR_CLEARANCE + 40,
     gap: 16,
-  },
-
-  /* Header Section */
-  headerSection: {
-        paddingHorizontal: 20,
-    paddingBottom: 14,
-    borderBottomLeftRadius: radius.xl,
-    borderBottomRightRadius: radius.xl,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
   },
 
   /* Doctor Hero Card */

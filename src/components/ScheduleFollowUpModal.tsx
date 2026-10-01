@@ -9,7 +9,9 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   X,
   Calendar,
@@ -113,10 +115,13 @@ export default function ScheduleFollowUpModal({
     saveMut.mutate();
   };
 
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 36 : 16) + 14;
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <View style={styles.modalCard}>
+        <View style={[styles.modalCard, { paddingBottom: bottomInset }]}>
           <View style={styles.modalHeader}>
             <View style={styles.headerTitleRow}>
               <Stethoscope size={20} color={colors.primary} strokeWidth={2.2} />

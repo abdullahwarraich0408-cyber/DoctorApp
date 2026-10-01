@@ -40,8 +40,9 @@ import {
 import { doctorPortalApi } from '../../lib/api';
 import { resolveFollowUpDate } from '../../lib/mappers/doctorPortal';
 import { colors, radius, shadows } from '../../theme';
-import GreenGradientHeader from '../../components/GreenGradientHeader';
+import TabScreenHeader from '../../components/TabScreenHeader';
 import type { RootStackParamList } from '../../navigation/types';
+import EndConsultationModal from '../../components/EndConsultationModal';
 
 const MODAL_SCROLL_MAX = Dimensions.get('window').height * 0.55;
 
@@ -122,6 +123,7 @@ export function ConsultationScreen() {
   const [rxModalOpen, setRxModalOpen] = useState(false);
   const [labOpen, setLabOpen] = useState(false);
   const [rxItems, setRxItems] = useState<RxItem[]>([EMPTY_RX]);
+  const [showEndConfirmModal, setShowEndConfirmModal] = useState(false);
 
   const query = useQuery({
     queryKey: ['doctor-consultation', appointmentId],
@@ -213,11 +215,12 @@ export function ConsultationScreen() {
       return doctorPortalApi.updateAppointmentStatus(appointmentId, 'completed', notes);
     },
     onSuccess: (result) => {
+      setShowEndConfirmModal(false);
       queryClient.invalidateQueries({ queryKey: ['doctor-consultation', appointmentId] });
       queryClient.invalidateQueries({ queryKey: ['doctor-appointments'] });
       queryClient.invalidateQueries({ queryKey: ['doctor-stats'] });
       queryClient.invalidateQueries({ queryKey: ['doctor-follow-ups'] });
-      if (result?.alreadyCompleted) {
+      if ((result as any)?.alreadyCompleted) {
         Alert.alert('Saved', 'Clinical notes and follow-up were updated. This visit was already completed.');
         return;
       }
@@ -225,7 +228,10 @@ export function ConsultationScreen() {
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     },
-    onError: (err: Error) => Alert.alert('Error completing visit', err.message),
+    onError: (err: Error) => {
+      setShowEndConfirmModal(false);
+      Alert.alert('Error completing visit', err.message);
+    },
   });
 
   const issueRxMut = useMutation({
@@ -319,29 +325,19 @@ export function ConsultationScreen() {
 
   return (
     <View style={styles.root}>
-      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
-        <View style={styles.headerRow}>
-          <Pressable
-            style={styles.headerIconBtn}
-            onPress={() => navigation.goBack()}
-            accessibilityLabel="Go back"
-            hitSlop={8}>
-            <ArrowLeft size={20} color="#FFFFFF" strokeWidth={2.2} />
-          </Pressable>
-
-          <View style={styles.headerTitleCol}>
-            <Text style={styles.headerTitle}>Clinical Case Sheet</Text>
-            <Text style={styles.headerSub}>Case #{caseId}</Text>
-          </View>
-
+      <TabScreenHeader
+        showBack
+        title="Clinical Case Sheet"
+        subtitle={`Case #${caseId}`}
+        right={
           <View style={styles.statusPill}>
             <View style={styles.statusDot} />
             <Text style={styles.statusPillText}>
               {isAlreadyCompleted ? 'Completed' : 'In Session'}
             </Text>
           </View>
-        </View>
-      </GreenGradientHeader>
+        }
+      />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -615,17 +611,7 @@ export function ConsultationScreen() {
                 completeMut.mutate();
                 return;
               }
-              Alert.alert(
-                'Complete Consultation',
-                'Finalize and close this clinical case sheet?',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'End & Complete',
-                    onPress: () => completeMut.mutate(),
-                  },
-                ],
-              );
+              setShowEndConfirmModal(true);
             }}
             disabled={completeMut.isPending}>
             {completeMut.isPending ? (
@@ -645,6 +631,16 @@ export function ConsultationScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Custom Confirmation Prompted Modal: Complete Consultation */}
+      <EndConsultationModal
+        visible={showEndConfirmModal}
+        onClose={() => setShowEndConfirmModal(false)}
+        onConfirm={() => completeMut.mutate()}
+        isLoading={completeMut.isPending}
+        patientName={patientName}
+        isTeleconsult={false}
+      />
 
       {/* Prescription Builder Modal */}
       <Modal

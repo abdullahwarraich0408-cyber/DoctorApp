@@ -31,7 +31,7 @@ import {
 } from 'lucide-react-native';
 import { doctorPortalApi } from '../../lib/api';
 import { colors, radius, spacing, shadows, TAB_BAR_CLEARANCE } from '../../theme';
-import GreenGradientHeader from '../../components/GreenGradientHeader';
+import TabScreenHeader from '../../components/TabScreenHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
 interface RxMedicineItem {
@@ -81,6 +81,10 @@ export function PrescriptionScreen() {
     insets.top,
     Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   );
+  const bottomInset = Math.max(
+    insets.bottom,
+    Platform.OS === 'android' ? 36 : 16,
+  ) + 14;
 
   const [items, setItems] = useState<RxMedicineItem[]>([{ ...EMPTY_MEDICINE }]);
   const [notes, setNotes] = useState('');
@@ -201,27 +205,13 @@ export function PrescriptionScreen() {
 
   return (
     <View style={styles.root}>
-
-      {/* Deep Teal Header */}
-      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
-        <View style={styles.headerRow}>
-          <Pressable
-            style={styles.headerBackBtn}
-            onPress={() => navigation.goBack()}
-            accessibilityLabel="Go back"
-            hitSlop={8}>
-            <ArrowLeft size={22} color="#FFFFFF" strokeWidth={2.2} />
-          </Pressable>
-          <Text style={styles.headerTitle}>Prescription</Text>
-          <View style={{ width: 40 }} />
-        </View>
-      </GreenGradientHeader>
+      <TabScreenHeader showBack title="Prescription" />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + 80 }]}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={true}
           keyboardDismissMode="on-drag"
@@ -436,7 +426,7 @@ export function PrescriptionScreen() {
         </ScrollView>
 
         {/* Sticky Bottom Actions Bar */}
-        <View style={styles.bottomBar}>
+        <View style={[styles.bottomBar, { paddingBottom: bottomInset }]}>
           <Pressable
             style={styles.saveDraftBtn}
             onPress={() => saveMut.mutate(false)}
@@ -832,7 +822,6 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     paddingHorizontal: 20,
     paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
     flexDirection: 'row',
     gap: 12,
     ...shadows.cardElevated,

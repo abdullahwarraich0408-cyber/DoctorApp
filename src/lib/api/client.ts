@@ -77,9 +77,20 @@ export async function apiClient<T = unknown>(
     config.body = body instanceof FormData ? body : JSON.stringify(body);
   }
 
-  const run = () => fetch(`${getApiBaseUrl()}${path}`, config);
-  let response = await run();
-  let payload = await parseJson(response);
+  const url = `${getApiBaseUrl()}${path}`;
+  const run = () => fetch(url, config);
+  let response: Response;
+  let payload: any;
+  try {
+    response = await run();
+    payload = await parseJson(response);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Network request failed';
+    throw new ApiError(
+      `Cannot reach API at ${getApiBaseUrl()} (${detail}). Check Backend on port 5000 and ANDROID_CONNECTION / adb reverse.`,
+      0,
+    );
+  }
 
   if (response.status === 401 && !skipAuth) {
     if (!refreshing) refreshing = refreshAccessToken().finally(() => {

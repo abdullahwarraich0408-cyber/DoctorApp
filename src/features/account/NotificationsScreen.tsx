@@ -25,7 +25,7 @@ import {
 import { doctorPortalApi } from '../../lib/api';
 import { formatDate } from '../../lib/mappers/doctorPortal';
 import { colors, radius, spacing, shadows } from '../../theme';
-import GreenGradientHeader from '../../components/GreenGradientHeader';
+import TabScreenHeader from '../../components/TabScreenHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
 type NotificationItem = {
@@ -116,26 +116,16 @@ export function NotificationsScreen() {
 
   return (
     <View style={styles.root}>
-
-      {/* Header */}
-      <GreenGradientHeader style={[styles.header, { paddingTop: topInset + 8 }]}>
-        <View style={styles.headerRow}>
-          <Pressable
-            style={styles.backBtn}
-            onPress={() => navigation.goBack()}
-            accessibilityLabel="Go back"
-            hitSlop={8}>
-            <ArrowLeft size={22} color="#FFFFFF" strokeWidth={2.2} />
-          </Pressable>
-
-          <View style={styles.headerTitleCol}>
-            <Text style={styles.headerTitle}>Notifications</Text>
-            {unreadCount > 0 && (
-              <Text style={styles.headerSub}>{unreadCount} unread alert{unreadCount > 1 ? 's' : ''}</Text>
-            )}
-          </View>
-
-          {unreadCount > 0 && (
+      <TabScreenHeader
+        showBack
+        title="Notifications"
+        subtitle={
+          unreadCount > 0
+            ? `${unreadCount} unread alert${unreadCount > 1 ? 's' : ''}`
+            : undefined
+        }
+        right={
+          unreadCount > 0 ? (
             <Pressable
               style={styles.markAllBtn}
               onPress={() => markAllMut.mutate()}
@@ -143,9 +133,9 @@ export function NotificationsScreen() {
               <CheckCheck size={16} color="#FFFFFF" strokeWidth={2.2} />
               <Text style={styles.markAllText}>Mark all read</Text>
             </Pressable>
-          )}
-        </View>
-      </GreenGradientHeader>
+          ) : undefined
+        }
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}

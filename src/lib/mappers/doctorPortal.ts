@@ -137,8 +137,8 @@ export function mapAppointment(appointment: any): DoctorAppointment {
     type:
       mode === 'in_person'
         ? 'Clinic'
-        : mode === 'online'
-          ? 'Online'
+        : mode === 'online' || mode === 'video'
+          ? 'Video'
           : needsModeSelection
             ? 'Awaiting mode'
             : 'Consult',
@@ -148,7 +148,10 @@ export function mapAppointment(appointment: any): DoctorAppointment {
       appointment.parent_appointment_id || appointment.parentAppointmentId || null,
     consultationMode,
     needsModeSelection,
-    isOnline: mode === 'online' || Boolean(appointment.meeting_id),
+    isOnline:
+      mode === 'online' ||
+      mode === 'video' ||
+      Boolean(appointment.meeting_id),
     isInPerson: mode === 'in_person',
     date: formatDate(appointment.appointment_date),
     dateRaw: appointment.appointment_date,
@@ -171,20 +174,32 @@ export type DoctorPatient = {
   name: string;
   email: string;
   phone: string;
+  age?: number | string | null;
+  gender?: string | null;
+  bloodGroup?: string | null;
   lastVisit: string;
   condition: string;
   appointmentsCount: number;
+  raw?: any;
 };
 
 export function mapPatient(patient: any): DoctorPatient {
+  const profile =
+    patient?.profile_data && typeof patient.profile_data === 'object'
+      ? patient.profile_data
+      : {};
   return {
     id: patient.id,
     name: patient.name,
     email: patient.email || '',
     phone: patient.phone || '',
+    age: patient.age || profile.age || null,
+    gender: patient.gender || profile.gender || null,
+    bloodGroup: patient.bloodGroup || profile.bloodGroup || profile.blood_group || null,
     lastVisit: formatDate(patient.lastVisit),
     condition: patient.condition || 'General',
     appointmentsCount: patient.appointmentsCount || 1,
+    raw: patient,
   };
 }
 

@@ -1,6 +1,7 @@
 export * from './colors';
 export * from './spacing';
 export * from './radius';
+export * from './tabScreenHeader';
 
 export const typography = {
   h1: { fontSize: 28, fontWeight: '700' as const, color: '#10233F' },

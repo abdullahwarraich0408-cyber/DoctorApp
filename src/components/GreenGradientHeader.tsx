@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ViewStyle, StatusBar, LayoutChangeEvent } from 'react-native';
+import { View, StyleSheet, StyleProp, ViewStyle, StatusBar, LayoutChangeEvent } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 
 type GreenGradientHeaderProps = {
-  style?: ViewStyle | (ViewStyle | false | null | undefined)[];
+  style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
 };
 

@@ -37,7 +37,57 @@ const INJECTED_BRIDGE = `
       }
     } catch (e) {}
   }
+
+  function hideNativeChrome() {
+    try {
+      var style = document.getElementById('medzoos-hide-jitsi-chrome');
+      if (!style) {
+        style = document.createElement('style');
+        style.id = 'medzoos-hide-jitsi-chrome';
+        style.textContent = [
+          /* Jitsi / Element Meet native chrome — DoctorApp owns controls */
+          '.new-toolbox, .toolbox-content-wrapper, .toolbox-content, #new-toolbox,',
+          '.toolbox, .toolbox-icon, .hangup-button, .audio-preview, .video-preview,',
+          '.subject, .subject-text, .subject-timer, .conference-timer,',
+          '.watermark, .leftwatermark, .rightwatermark,',
+          '.invite-more-container, .invite-more, .raised-hands-count,',
+          '.participants-pane, .chat-button-container, .reactions-menu,',
+          '.large-video-labels, .videocontainer__toolbar,',
+          '.button-menu, .popover, .overflow-menu,',
+          '.prejoin, .prejoin-full-page, .premeeting-screen,',
+          '.mobile-browser-app-banner, .deep-linking,',
+          '[class*="Toolbox"], [class*="toolbox"],',
+          '[class*="Hangup"], [class*="hangup"],',
+          '[class*="Subject"], [class*="ConferenceTimer"],',
+          'header[class*="header"], footer[class*="footer"]',
+          '{ display: none !important; visibility: hidden !important;',
+          '  opacity: 0 !important; pointer-events: none !important;',
+          '  height: 0 !important; max-height: 0 !important; }',
+          /* Keep the large video / tiles visible */
+          '#largeVideoContainer, #largeVideo, .videocontainer,',
+          '.dominant-speaker, video',
+          '{ visibility: visible !important; opacity: 1 !important; }'
+        ].join(' ');
+        (document.head || document.documentElement).appendChild(style);
+      }
+
+      if (typeof APP !== 'undefined' && APP.store && APP.store.dispatch) {
+        try {
+          APP.store.dispatch({
+            type: 'SET_TOOLBOX_ALWAYS_VISIBLE',
+            alwaysVisible: false
+          });
+        } catch (e1) {}
+      }
+    } catch (e) {}
+  }
+
   window.__medzoosApplyMedia = applyMedia;
+  window.__medzoosHideNativeChrome = hideNativeChrome;
+  hideNativeChrome();
+  if (!window.__medzoosChromeTimer) {
+    window.__medzoosChromeTimer = setInterval(hideNativeChrome, 800);
+  }
   true;
 })();
 `;
@@ -116,6 +166,9 @@ export function TelehealthVideoWebView({
     webRef.current?.injectJavaScript?.(`
       (function() {
         try {
+          if (typeof window.__medzoosHideNativeChrome === 'function') {
+            window.__medzoosHideNativeChrome();
+          }
           if (typeof window.__medzoosApplyMedia === 'function') {
             window.__medzoosApplyMedia(${muted ? 'true' : 'false'}, ${
               cameraOff ? 'true' : 'false'
@@ -162,6 +215,7 @@ export function TelehealthVideoWebView({
         userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
         originWhitelist={['https://*', 'http://*']}
         injectedJavaScriptBeforeContentLoaded={INJECTED_BRIDGE}
+        injectedJavaScript={INJECTED_BRIDGE}
         onLoadEnd={markReady}
         onError={(event: { nativeEvent?: { description?: string } }) => {
           setLoadError(event?.nativeEvent?.description || 'Video failed to load');

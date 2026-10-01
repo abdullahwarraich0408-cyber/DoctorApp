@@ -17,9 +17,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ArrowLeft,
   Video,
   Building,
   Clock,
@@ -32,7 +30,7 @@ import {
 import { doctorPortalApi } from '../../lib/api';
 import { formatMoney, mapDoctorProfile } from '../../lib/mappers/doctorPortal';
 import { colors, radius, shadows } from '../../theme';
-import GreenGradientHeader from '../../components/GreenGradientHeader';
+import TabScreenHeader from '../../components/TabScreenHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
 const WEEKDAYS = [
@@ -109,11 +107,6 @@ export function ScheduleScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const queryClient = useQueryClient();
-  const insets = useSafeAreaInsets();
-  const topInset = Math.max(
-    insets.top,
-    Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
-  );
 
   const [selectedDay, setSelectedDay] = useState('Wed');
   const [onlineEnabled, setOnlineEnabled] = useState(true);
@@ -334,30 +327,18 @@ export function ScheduleScreen() {
 
   return (
     <View style={styles.root}>
-      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
-        <View style={styles.headerRow}>
-          <Pressable
-            style={styles.headerBackBtn}
-            onPress={() => navigation.goBack()}
-            accessibilityLabel="Go back"
-            hitSlop={8}>
-            <ArrowLeft size={22} color="#FFFFFF" strokeWidth={2.2} />
-          </Pressable>
-
-          <View style={styles.headerTextCenter}>
-            <Text style={styles.headerTitle}>Schedule</Text>
-            <Text style={styles.headerSub}>
-              Manage your availability and practice locations
-            </Text>
-          </View>
-
+      <TabScreenHeader
+        showBack
+        title="Schedule"
+        subtitle="Manage your availability and practice locations"
+        right={
           <View style={[styles.doctorHeaderAvatar, styles.doctorHeaderAvatarFallback]}>
             <Text style={styles.doctorHeaderAvatarInitial}>
               {(profile?.name || 'D').charAt(0).toUpperCase()}
             </Text>
           </View>
-        </View>
-      </GreenGradientHeader>
+        }
+      />
 
       <KeyboardAvoidingView
         style={styles.flex}

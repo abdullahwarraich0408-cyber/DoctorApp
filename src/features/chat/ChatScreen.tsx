@@ -31,7 +31,8 @@ import { telehealthApi } from '../../lib/api';
 import { mapChatMessage } from '../../lib/mappers/doctorPortal';
 import { getDoctorSocket } from '../../lib/socket';
 import { colors, radius, spacing, shadows } from '../../theme';
-import GreenGradientHeader from '../../components/GreenGradientHeader';
+import TabScreenHeader from '../../components/TabScreenHeader';
+import { screenHeaderTitleStyle } from '../../theme/tabScreenHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
 function formatMessageTime(value?: string) {
@@ -128,19 +129,9 @@ export function ChatScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* Header Section */}
-      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 6 }]}>
-        <View style={styles.headerRow}>
-          {/* Back Button */}
-          <Pressable
-            style={({ pressed }) => [styles.backBtn, pressed && styles.btnPressed]}
-            onPress={() => navigation.goBack()}
-            accessibilityLabel="Go back"
-            hitSlop={8}>
-            <ArrowLeft size={22} color="#FFFFFF" strokeWidth={2.2} />
-          </Pressable>
-
-          {/* Patient Avatar & Meta */}
+      <TabScreenHeader
+        showBack
+        leading={
           <View style={styles.patientInfoRow}>
             <View style={styles.avatarContainer}>
               <View style={[styles.headerAvatar, styles.avatarFallback]}>
@@ -161,9 +152,9 @@ export function ChatScreen() {
               </View>
             </View>
           </View>
-
-          {/* Right Action Icons */}
-          <View style={styles.headerRightActions}>
+        }
+        right={
+          <>
             <Pressable
               style={({ pressed }) => [styles.headerActionBtn, pressed && styles.btnPressed]}
               onPress={() =>
@@ -182,9 +173,9 @@ export function ChatScreen() {
               hitSlop={8}>
               <MoreHorizontal size={19} color="#FFFFFF" strokeWidth={2} />
             </Pressable>
-          </View>
-        </View>
-      </GreenGradientHeader>
+          </>
+        }
+      />
 
       {/* Privacy & Security Banner */}
       <View style={styles.privacyBanner}>
@@ -388,9 +379,7 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   patientNameText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    ...screenHeaderTitleStyle,
   },
   statusSubRow: {
     flexDirection: 'row',

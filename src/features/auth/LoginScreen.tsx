@@ -7,10 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
-  StatusBar,
   Pressable,
-  Image,
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,20 +21,21 @@ import {
   ArrowRight,
   ShieldCheck,
   Stethoscope,
-  Sparkles,
   User,
-  Phone,
   Building,
 } from 'lucide-react-native';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { partnerAuthApi } from '../../lib/api';
 import { ApiError } from '../../lib/api/client';
-import { colors, radius, spacing, shadows } from '../../theme';
+import { colors, radius, shadows } from '../../theme';
+import GreenGradientHeader from '../../components/GreenGradientHeader';
+import { getStatusBarTopInset } from '../../theme/tabScreenHeader';
 
 type AuthMode = 'signin' | 'signup' | 'forgot' | 'resetsent';
 
 export function LoginScreen() {
   const insets = useSafeAreaInsets();
+  const topInset = getStatusBarTopInset(insets.top);
   const { login } = useAuth();
 
   const [mode, setMode] = useState<AuthMode>('signin');
@@ -57,6 +55,10 @@ export function LoginScreen() {
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const clearError = () => {
+    if (errorMessage) setErrorMessage(null);
+  };
 
   const handleSignIn = async (userEmail?: string, userPass?: string) => {
     setErrorMessage(null);
@@ -124,15 +126,13 @@ export function LoginScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
-
-      {/* Deep Teal Top Header Banner */}
-      <View style={[styles.headerHero, { paddingTop: insets.top + 16 }]}>
+      {/* Dynamic Teal Gradient Top Header — identical gradient and style to DoctorApp Home/Tab screens */}
+      <GreenGradientHeader style={[styles.headerHero, { paddingTop: topInset + 10 }]}>
         <View style={styles.brandRow}>
           <View style={styles.brandIconWrap}>
-            <Stethoscope size={22} color="#FFFFFF" strokeWidth={2.4} />
+            <Stethoscope size={20} color="#FFFFFF" strokeWidth={2.4} />
           </View>
-          <View style={{ gap: 1 }}>
+          <View style={styles.brandTextCol}>
             <Text style={styles.brandName}>MEDZOOS</Text>
             <Text style={styles.brandSub}>DOCTOR PORTAL</Text>
           </View>
@@ -195,23 +195,18 @@ export function LoginScreen() {
             </Pressable>
           </View>
         )}
-      </View>
+      </GreenGradientHeader>
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom + 8, 16) },
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
-
-          {/* Error Alert Banner */}
-          {errorMessage ? (
-            <View style={styles.errorBanner}>
-              <AlertCircle size={18} color={colors.danger} strokeWidth={2.2} />
-              <Text style={styles.errorBannerText}>{errorMessage}</Text>
-            </View>
-          ) : null}
 
           {/* SIGN IN FORM */}
           {mode === 'signin' && (
@@ -224,7 +219,7 @@ export function LoginScreen() {
                     emailFocused && styles.inputFieldFocused,
                   ]}>
                   <Mail
-                    size={18}
+                    size={16}
                     color={emailFocused ? colors.primary : colors.textMuted}
                     strokeWidth={2}
                   />
@@ -233,7 +228,10 @@ export function LoginScreen() {
                     placeholder="doctor@medzoos.com"
                     placeholderTextColor={colors.textMuted}
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={text => {
+                      setEmail(text);
+                      clearError();
+                    }}
                     onFocus={() => setEmailFocused(true)}
                     onBlur={() => setEmailFocused(false)}
                     autoCapitalize="none"
@@ -250,7 +248,7 @@ export function LoginScreen() {
                     passwordFocused && styles.inputFieldFocused,
                   ]}>
                   <Lock
-                    size={18}
+                    size={16}
                     color={passwordFocused ? colors.primary : colors.textMuted}
                     strokeWidth={2}
                   />
@@ -260,7 +258,10 @@ export function LoginScreen() {
                     placeholderTextColor={colors.textMuted}
                     secureTextEntry={!showPassword}
                     value={password}
-                    onChangeText={setPassword}
+                    onChangeText={text => {
+                      setPassword(text);
+                      clearError();
+                    }}
                     onFocus={() => setPasswordFocused(true)}
                     onBlur={() => setPasswordFocused(false)}
                   />
@@ -268,9 +269,9 @@ export function LoginScreen() {
                     onPress={() => setShowPassword(!showPassword)}
                     hitSlop={8}>
                     {showPassword ? (
-                      <EyeOff size={18} color={colors.textMuted} strokeWidth={2} />
+                      <EyeOff size={16} color={colors.textMuted} strokeWidth={2} />
                     ) : (
-                      <Eye size={18} color={colors.textMuted} strokeWidth={2} />
+                      <Eye size={16} color={colors.textMuted} strokeWidth={2} />
                     )}
                   </Pressable>
                 </View>
@@ -291,10 +292,24 @@ export function LoginScreen() {
                   <Text style={styles.rememberText}>Remember me</Text>
                 </Pressable>
 
-                <Pressable onPress={() => setMode('forgot')}>
+                <Pressable
+                  onPress={() => {
+                    setMode('forgot');
+                    clearError();
+                  }}>
                   <Text style={styles.forgotText}>Forgot password?</Text>
                 </Pressable>
               </View>
+
+              {/* Space-efficient Inline Error Alert inside the card */}
+              {errorMessage ? (
+                <View style={styles.inlineErrorBox}>
+                  <AlertCircle size={14} color={colors.danger} strokeWidth={2.4} />
+                  <Text style={styles.inlineErrorText} numberOfLines={2}>
+                    {errorMessage}
+                  </Text>
+                </View>
+              ) : null}
 
               {/* Sign In CTA Button */}
               <Pressable
@@ -306,7 +321,7 @@ export function LoginScreen() {
                 ) : (
                   <>
                     <Text style={styles.primaryActionBtnText}>Sign In to Workspace</Text>
-                    <ArrowRight size={18} color="#FFFFFF" strokeWidth={2.2} />
+                    <ArrowRight size={16} color="#FFFFFF" strokeWidth={2.2} />
                   </>
                 )}
               </Pressable>
@@ -318,8 +333,25 @@ export function LoginScreen() {
                   <Pressable
                     style={styles.demoBtn}
                     onPress={() => {
+                      setEmail('daniyal@medzoos.com');
+                      setPassword('password123');
+                      clearError();
+                      handleSignIn('daniyal@medzoos.com', 'password123');
+                    }}>
+                    <View style={styles.demoDot} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.demoBtnName}>Dr. Daniyal</Text>
+                      <Text style={styles.demoBtnSub}>Cardiology • 4 Appointments</Text>
+                    </View>
+                    <ArrowRight size={13} color={colors.primary} strokeWidth={2.2} />
+                  </Pressable>
+
+                  <Pressable
+                    style={styles.demoBtn}
+                    onPress={() => {
                       setEmail('doctor@medzoos.com');
                       setPassword('password123');
+                      clearError();
                       handleSignIn('doctor@medzoos.com', 'password123');
                     }}>
                     <View style={styles.demoDot} />
@@ -327,22 +359,7 @@ export function LoginScreen() {
                       <Text style={styles.demoBtnName}>Dr. Ayesha Khan</Text>
                       <Text style={styles.demoBtnSub}>Neurology • 3 Appointments</Text>
                     </View>
-                    <ArrowRight size={14} color={colors.primary} strokeWidth={2} />
-                  </Pressable>
-
-                  <Pressable
-                    style={styles.demoBtn}
-                    onPress={() => {
-                      setEmail('doctor123@gmail.com');
-                      setPassword('password123');
-                      handleSignIn('doctor123@gmail.com', 'password123');
-                    }}>
-                    <View style={styles.demoDot} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.demoBtnName}>Dr. Abdullah Warraich</Text>
-                      <Text style={styles.demoBtnSub}>Diabetology • 3 Appointments</Text>
-                    </View>
-                    <ArrowRight size={14} color={colors.primary} strokeWidth={2} />
+                    <ArrowRight size={13} color={colors.primary} strokeWidth={2.2} />
                   </Pressable>
                 </View>
               </View>
@@ -360,7 +377,7 @@ export function LoginScreen() {
                     nameFocused && styles.inputFieldFocused,
                   ]}>
                   <User
-                    size={18}
+                    size={16}
                     color={nameFocused ? colors.primary : colors.textMuted}
                     strokeWidth={2}
                   />
@@ -369,7 +386,10 @@ export function LoginScreen() {
                     placeholder="e.g. Dr. Sara Khan"
                     placeholderTextColor={colors.textMuted}
                     value={fullName}
-                    onChangeText={setFullName}
+                    onChangeText={text => {
+                      setFullName(text);
+                      clearError();
+                    }}
                     onFocus={() => setNameFocused(true)}
                     onBlur={() => setNameFocused(false)}
                   />
@@ -379,13 +399,16 @@ export function LoginScreen() {
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Primary Medical Specialty</Text>
                 <View style={styles.inputFieldWrap}>
-                  <Building size={18} color={colors.textMuted} strokeWidth={2} />
+                  <Building size={16} color={colors.textMuted} strokeWidth={2} />
                   <TextInput
                     style={styles.textInput}
                     placeholder="e.g. Consultant Neurologist"
                     placeholderTextColor={colors.textMuted}
                     value={specialty}
-                    onChangeText={setSpecialty}
+                    onChangeText={text => {
+                      setSpecialty(text);
+                      clearError();
+                    }}
                   />
                 </View>
               </View>
@@ -398,7 +421,7 @@ export function LoginScreen() {
                     emailFocused && styles.inputFieldFocused,
                   ]}>
                   <Mail
-                    size={18}
+                    size={16}
                     color={emailFocused ? colors.primary : colors.textMuted}
                     strokeWidth={2}
                   />
@@ -407,7 +430,10 @@ export function LoginScreen() {
                     placeholder="doctor@hospital.com"
                     placeholderTextColor={colors.textMuted}
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={text => {
+                      setEmail(text);
+                      clearError();
+                    }}
                     onFocus={() => setEmailFocused(true)}
                     onBlur={() => setEmailFocused(false)}
                     autoCapitalize="none"
@@ -424,7 +450,7 @@ export function LoginScreen() {
                     passwordFocused && styles.inputFieldFocused,
                   ]}>
                   <Lock
-                    size={18}
+                    size={16}
                     color={passwordFocused ? colors.primary : colors.textMuted}
                     strokeWidth={2}
                   />
@@ -434,7 +460,10 @@ export function LoginScreen() {
                     placeholderTextColor={colors.textMuted}
                     secureTextEntry={!showPassword}
                     value={password}
-                    onChangeText={setPassword}
+                    onChangeText={text => {
+                      setPassword(text);
+                      clearError();
+                    }}
                     onFocus={() => setPasswordFocused(true)}
                     onBlur={() => setPasswordFocused(false)}
                   />
@@ -442,9 +471,9 @@ export function LoginScreen() {
                     onPress={() => setShowPassword(!showPassword)}
                     hitSlop={8}>
                     {showPassword ? (
-                      <EyeOff size={18} color={colors.textMuted} strokeWidth={2} />
+                      <EyeOff size={16} color={colors.textMuted} strokeWidth={2} />
                     ) : (
-                      <Eye size={18} color={colors.textMuted} strokeWidth={2} />
+                      <Eye size={16} color={colors.textMuted} strokeWidth={2} />
                     )}
                   </Pressable>
                 </View>
@@ -458,7 +487,7 @@ export function LoginScreen() {
                     confirmFocused && styles.inputFieldFocused,
                   ]}>
                   <Lock
-                    size={18}
+                    size={16}
                     color={confirmFocused ? colors.primary : colors.textMuted}
                     strokeWidth={2}
                   />
@@ -468,7 +497,10 @@ export function LoginScreen() {
                     placeholderTextColor={colors.textMuted}
                     secureTextEntry={!showConfirmPassword}
                     value={confirmPassword}
-                    onChangeText={setConfirmPassword}
+                    onChangeText={text => {
+                      setConfirmPassword(text);
+                      clearError();
+                    }}
                     onFocus={() => setConfirmFocused(true)}
                     onBlur={() => setConfirmFocused(false)}
                   />
@@ -476,13 +508,23 @@ export function LoginScreen() {
                     onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                     hitSlop={8}>
                     {showConfirmPassword ? (
-                      <EyeOff size={18} color={colors.textMuted} strokeWidth={2} />
+                      <EyeOff size={16} color={colors.textMuted} strokeWidth={2} />
                     ) : (
-                      <Eye size={18} color={colors.textMuted} strokeWidth={2} />
+                      <Eye size={16} color={colors.textMuted} strokeWidth={2} />
                     )}
                   </Pressable>
                 </View>
               </View>
+
+              {/* Space-efficient Inline Error Alert */}
+              {errorMessage ? (
+                <View style={styles.inlineErrorBox}>
+                  <AlertCircle size={14} color={colors.danger} strokeWidth={2.4} />
+                  <Text style={styles.inlineErrorText} numberOfLines={2}>
+                    {errorMessage}
+                  </Text>
+                </View>
+              ) : null}
 
               <Pressable
                 style={styles.primaryActionBtn}
@@ -493,7 +535,7 @@ export function LoginScreen() {
                 ) : (
                   <>
                     <Text style={styles.primaryActionBtnText}>Create Doctor Account</Text>
-                    <ArrowRight size={18} color="#FFFFFF" strokeWidth={2.2} />
+                    <ArrowRight size={16} color="#FFFFFF" strokeWidth={2.2} />
                   </>
                 )}
               </Pressable>
@@ -511,7 +553,7 @@ export function LoginScreen() {
                     emailFocused && styles.inputFieldFocused,
                   ]}>
                   <Mail
-                    size={18}
+                    size={16}
                     color={emailFocused ? colors.primary : colors.textMuted}
                     strokeWidth={2}
                   />
@@ -520,7 +562,10 @@ export function LoginScreen() {
                     placeholder="doctor@medzoos.com"
                     placeholderTextColor={colors.textMuted}
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={text => {
+                      setEmail(text);
+                      clearError();
+                    }}
                     onFocus={() => setEmailFocused(true)}
                     onBlur={() => setEmailFocused(false)}
                     autoCapitalize="none"
@@ -528,6 +573,16 @@ export function LoginScreen() {
                   />
                 </View>
               </View>
+
+              {/* Space-efficient Inline Error Alert */}
+              {errorMessage ? (
+                <View style={styles.inlineErrorBox}>
+                  <AlertCircle size={14} color={colors.danger} strokeWidth={2.4} />
+                  <Text style={styles.inlineErrorText} numberOfLines={2}>
+                    {errorMessage}
+                  </Text>
+                </View>
+              ) : null}
 
               <Pressable
                 style={styles.primaryActionBtn}
@@ -538,14 +593,17 @@ export function LoginScreen() {
                 ) : (
                   <>
                     <Text style={styles.primaryActionBtnText}>Send Recovery Link</Text>
-                    <ArrowRight size={18} color="#FFFFFF" strokeWidth={2.2} />
+                    <ArrowRight size={16} color="#FFFFFF" strokeWidth={2.2} />
                   </>
                 )}
               </Pressable>
 
               <Pressable
                 style={styles.backToSignBtn}
-                onPress={() => setMode('signin')}>
+                onPress={() => {
+                  setMode('signin');
+                  clearError();
+                }}>
                 <Text style={styles.backToSignBtnText}>&lt; Back to Sign In</Text>
               </Pressable>
             </View>
@@ -555,7 +613,7 @@ export function LoginScreen() {
           {mode === 'resetsent' && (
             <View style={styles.formCard}>
               <View style={styles.sentIconWrap}>
-                <ShieldCheck size={36} color={colors.primary} strokeWidth={2.2} />
+                <ShieldCheck size={32} color={colors.primary} strokeWidth={2.2} />
               </View>
               <Text style={styles.sentTitle}>Recovery Email Sent</Text>
               <Text style={styles.sentDesc}>
@@ -565,7 +623,10 @@ export function LoginScreen() {
 
               <Pressable
                 style={styles.primaryActionBtn}
-                onPress={() => setMode('signin')}>
+                onPress={() => {
+                  setMode('signin');
+                  clearError();
+                }}>
                 <Text style={styles.primaryActionBtnText}>Back to Sign In</Text>
               </Pressable>
             </View>
@@ -573,7 +634,7 @@ export function LoginScreen() {
 
           {/* Compliance & Security Tag */}
           <View style={styles.securityFooter}>
-            <ShieldCheck size={14} color={colors.textMuted} strokeWidth={2} />
+            <ShieldCheck size={13} color={colors.textMuted} strokeWidth={2} />
             <Text style={styles.securityFooterText}>
               256-Bit Encrypted Healthcare Provider Authentication
             </Text>
@@ -590,12 +651,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   headerHero: {
-    backgroundColor: colors.primary,
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 14,
     borderBottomLeftRadius: radius.xl,
     borderBottomRightRadius: radius.xl,
-    gap: 10,
+    gap: 6,
   },
   brandRow: {
     flexDirection: 'row',
@@ -603,15 +663,20 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   brandIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  brandTextCol: {
+    gap: 1,
+  },
   brandName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 1.2,
@@ -627,9 +692,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(221, 246, 242, 0.2)',
+    backgroundColor: 'rgba(221, 246, 242, 0.18)',
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: 'rgba(221, 246, 242, 0.3)',
@@ -641,86 +706,91 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: -0.3,
-    marginTop: 4,
+    letterSpacing: -0.35,
+    marginTop: 2,
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
   },
   heroSubtitle: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.85)',
-    lineHeight: 17,
+    color: 'rgba(255, 255, 255, 0.88)',
+    lineHeight: 16,
+    letterSpacing: -0.1,
+    fontWeight: '400',
   },
   tabSwitcher: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(0, 78, 82, 0.85)',
+    backgroundColor: 'rgba(0, 42, 46, 0.35)',
     borderRadius: radius.md,
     padding: 3,
-    marginTop: 6,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   tabBtn: {
     flex: 1,
-    paddingVertical: 7,
+    paddingVertical: 6,
     alignItems: 'center',
     borderRadius: radius.sm,
   },
   tabBtnActive: {
     backgroundColor: '#FFFFFF',
+    ...shadows.cardSoft,
   },
   tabBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.85)',
   },
   tabBtnTextActive: {
-    color: colors.primary,
-    fontWeight: '800',
+    color: colors.primaryDark,
+    fontWeight: '700',
   },
 
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 40,
-    gap: 14,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    gap: 10,
   },
 
-  errorBanner: {
+  inlineErrorBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     backgroundColor: colors.dangerBg,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: radius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: '#FED7D7',
   },
-  errorBannerText: {
+  inlineErrorText: {
     flex: 1,
     fontSize: 11,
     fontWeight: '600',
     color: colors.danger,
-    lineHeight: 16,
+    lineHeight: 14,
   },
 
   formCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.xl,
-    padding: 18,
+    padding: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 14,
+    gap: 10,
     ...shadows.card,
   },
   inputGroup: {
-    gap: 5,
+    gap: 4,
   },
   inputLabel: {
     fontSize: 11,
     fontWeight: '700',
     color: colors.textPrimary,
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
   },
   inputFieldWrap: {
     flexDirection: 'row',
@@ -730,8 +800,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: 12,
-    height: 46,
-    gap: 10,
+    height: 42,
+    gap: 8,
   },
   inputFieldFocused: {
     borderColor: colors.primary,
@@ -741,13 +811,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: colors.textPrimary,
+    paddingVertical: 0,
   },
 
   optionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: -2,
+    paddingVertical: 2,
   },
   rememberRow: {
     flexDirection: 'row',
@@ -775,70 +846,71 @@ const styles = StyleSheet.create({
   },
   forgotText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
     color: colors.primary,
   },
 
   primaryActionBtn: {
-    height: 46,
+    height: 42,
     backgroundColor: colors.primary,
     borderRadius: radius.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    marginTop: 4,
+    gap: 6,
+    marginTop: 2,
     ...shadows.cardSoft,
   },
   primaryActionBtnText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
   },
 
   /* Demo Logins Section */
   demoSection: {
-    marginTop: 8,
+    marginTop: 4,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: 14,
-    gap: 8,
+    paddingTop: 10,
+    gap: 6,
   },
   demoSectionLabel: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '700',
     color: colors.textMuted,
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
     textAlign: 'center',
   },
   demoBtnsRow: {
-    gap: 8,
+    gap: 6,
   },
   demoBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     backgroundColor: colors.aqua,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#C8EDE9',
+    borderColor: '#B4E8E1',
   },
   demoDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: colors.primary,
   },
   demoBtnName: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.primaryDark,
   },
   demoBtnSub: {
     fontSize: 10,
     color: colors.textSecondary,
+    fontWeight: '500',
   },
 
   backToSignBtn: {
@@ -852,18 +924,20 @@ const styles = StyleSheet.create({
   },
 
   sentIconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: colors.aqua,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
-    marginVertical: 10,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#B4E8E1',
   },
   sentTitle: {
-    fontSize: 17,
-    fontWeight: '800',
+    fontSize: 16,
+    fontWeight: '700',
     color: colors.textPrimary,
     textAlign: 'center',
   },
@@ -871,16 +945,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 18,
-    paddingHorizontal: 12,
+    lineHeight: 17,
+    paddingHorizontal: 10,
   },
 
   securityFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    marginTop: 6,
+    gap: 5,
+    marginTop: 4,
+    paddingBottom: 4,
   },
   securityFooterText: {
     fontSize: 10,

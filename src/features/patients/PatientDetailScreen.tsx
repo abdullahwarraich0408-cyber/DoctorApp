@@ -27,6 +27,7 @@ import {
   FileText,
   Send,
   MessageSquare,
+  CalendarClock,
 } from 'lucide-react-native';
 import { doctorPortalApi } from '../../lib/api';
 import { formatDate, mapPatientClinicalHistory } from '../../lib/mappers/doctorPortal';
@@ -34,7 +35,7 @@ import { colors, radius, shadows } from '../../theme';
 import PatientInfoCard from '../../components/PatientInfoCard';
 import SectionHeader from '../../components/SectionHeader';
 import ScheduleFollowUpModal from '../../components/ScheduleFollowUpModal';
-import GreenGradientHeader from '../../components/GreenGradientHeader';
+import TabScreenHeader from '../../components/TabScreenHeader';
 import type { RootStackParamList } from '../../navigation/types';
 
 function formatFollowUpLabel(value?: string | null) {
@@ -53,7 +54,10 @@ export function PatientDetailScreen() {
     insets.top,
     Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   );
-  const bottomInset = Math.max(insets.bottom, 14);
+  const bottomInset = Math.max(
+    insets.bottom,
+    Platform.OS === 'android' ? 36 : 16,
+  ) + 14;
 
   const [activeTab, setActiveTab] = useState<'overview' | 'consultations' | 'prescriptions' | 'labs'>('overview');
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -139,23 +143,15 @@ export function PatientDetailScreen() {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
-        <View style={styles.headerRow}>
-          <Pressable
-            style={styles.headerBackBtn}
-            onPress={() => navigation.goBack()}
-            accessibilityLabel="Go back"
-            hitSlop={8}>
-            <ArrowLeft size={22} color="#FFFFFF" strokeWidth={2.2} />
-          </Pressable>
-
-          <Text style={styles.headerTitle}>Patient Record</Text>
-
+      <TabScreenHeader
+        showBack
+        title="Patient Record"
+        right={
           <Pressable style={styles.headerIconBtn} accessibilityLabel="Options" hitSlop={8}>
             <MoreVertical size={22} color="#FFFFFF" strokeWidth={2} />
           </Pressable>
-        </View>
-      </GreenGradientHeader>
+        }
+      />
 
       {query.isLoading ? (
         <View style={styles.centered}>
@@ -175,15 +171,17 @@ export function PatientDetailScreen() {
       ) : (
         <>
           <ScrollView
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + 72 }]}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + 80 }]}
             showsVerticalScrollIndicator={false}>
             <PatientInfoCard
-              avatarUri={require('../../assets/patient_avatar_placeholder.png')}
               name={patientName}
               ageGender={ageGender}
               bloodGroup={bloodGroup}
               patientId={String(targetPatientId).slice(-8)}
               phone={patientPhone}
+              totalVisits={allConsultations.length}
+              totalPrescriptions={prescriptionsList.length}
+              totalLabs={labsList.length}
             />
 
             {history.patient.allergies ? (
@@ -253,9 +251,15 @@ export function PatientDetailScreen() {
 
                 <View style={styles.timelineCard}>
                   {followUps.length === 0 ? (
-                    <Text style={styles.emptyInline}>
-                      No follow-up scheduled yet. Tap “+ Schedule Follow-up” to add one.
-                    </Text>
+                    <View style={styles.emptyFollowUpBox}>
+                      <View style={styles.emptyFollowUpIcon}>
+                        <CalendarClock size={20} color={colors.primary} strokeWidth={2} />
+                      </View>
+                      <Text style={styles.emptyFollowUpTitle}>No Upcoming Follow-ups</Text>
+                      <Text style={styles.emptyFollowUpSub}>
+                        Schedule follow-up appointments to track patient recovery.
+                      </Text>
+                    </View>
                   ) : (
                     followUps.map((fu: any) => (
                       <View key={fu.id} style={styles.followUpRow}>
@@ -309,7 +313,15 @@ export function PatientDetailScreen() {
 
                 <View style={styles.timelineCard}>
                   {allConsultations.length === 0 ? (
-                    <Text style={styles.emptyInline}>No consultations recorded yet.</Text>
+                    <View style={styles.emptyFollowUpBox}>
+                      <View style={styles.emptyFollowUpIcon}>
+                        <Stethoscope size={20} color={colors.primary} strokeWidth={2} />
+                      </View>
+                      <Text style={styles.emptyFollowUpTitle}>No Past Consultations</Text>
+                      <Text style={styles.emptyFollowUpSub}>
+                        Clinical notes and visit diagnoses will appear here once conducted.
+                      </Text>
+                    </View>
                   ) : (
                     allConsultations.map((item: any, idx: number) => {
                       const isLast = idx === allConsultations.length - 1;
@@ -423,7 +435,10 @@ export function PatientDetailScreen() {
                         </Pressable>
                       </>
                     ) : (
-                      <Text style={styles.emptyInline}>No prescriptions yet.</Text>
+                      <View style={styles.miniEmptyWrap}>
+                        <Pill size={18} color={colors.textMuted} strokeWidth={2} />
+                        <Text style={styles.miniEmptySub}>No prescriptions yet</Text>
+                      </View>
                     )}
                   </View>
 
@@ -436,7 +451,10 @@ export function PatientDetailScreen() {
                     </View>
                     <View style={styles.labResultsList}>
                       {labsList.length === 0 ? (
-                        <Text style={styles.emptyInline}>No lab orders yet.</Text>
+                        <View style={styles.miniEmptyWrap}>
+                          <FlaskConical size={18} color={colors.textMuted} strokeWidth={2} />
+                          <Text style={styles.miniEmptySub}>No lab orders yet</Text>
+                        </View>
                       ) : (
                         labsList.slice(0, 3).map((lab: any) => (
                           <View key={lab.id} style={styles.labRow}>
@@ -1189,37 +1207,37 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     paddingHorizontal: 16,
     paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+    paddingBottom: Platform.OS === 'android' ? 22 : 24,
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
     ...shadows.cardElevated,
   },
   barOutlineBtn: {
     flex: 1,
-    height: 42,
+    height: 44,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.primary,
+    borderWidth: 1.5,
+    borderColor: '#B4E8E1',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 6,
   },
   barOutlineBtnText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.primary,
   },
   barSolidBtn: {
-    flex: 1,
-    height: 42,
+    flex: 1.2,
+    height: 44,
     borderRadius: radius.md,
     backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
+    gap: 6,
     ...shadows.cardSoft,
   },
   barSolidBtnText: {
@@ -1228,12 +1246,52 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   btnPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.97 }],
+    opacity: 0.82,
+    transform: [{ scale: 0.98 }],
   },
   tabChipPressed: {
     opacity: 0.75,
     transform: [{ scale: 0.95 }],
+  },
+
+  /* Empty State Boxes in Record */
+  emptyFollowUpBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    paddingHorizontal: 12,
+    gap: 4,
+  },
+  emptyFollowUpIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.aqua,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  emptyFollowUpTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  emptyFollowUpSub: {
+    fontSize: 11,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 15,
+  },
+  miniEmptyWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 4,
+  },
+  miniEmptySub: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '500',
   },
 
   /* Vitals Container */

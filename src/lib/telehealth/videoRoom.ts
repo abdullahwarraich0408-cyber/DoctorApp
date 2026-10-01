@@ -6,6 +6,86 @@
  */
 export const JITSI_MEET_HOST = 'https://meet.element.io';
 
+/**
+ * Hide Jitsi / Element Meet native chrome so DoctorApp owns
+ * header + mic/camera/end overlays (avoids double trays).
+ */
+const JITSI_APP_OWNED_CHROME_PARAMS = [
+  'config.prejoinPageEnabled=false',
+  'config.prejoinConfig.enabled=false',
+  'config.requireDisplayName=false',
+  'config.disableDeepLinking=true',
+  'config.disableInviteFunctions=true',
+  'config.startWithAudioMuted=false',
+  'config.startWithVideoMuted=false',
+  'config.hideConferenceSubject=true',
+  'config.hideConferenceTimer=true',
+  'config.disableModeratorIndicator=true',
+  'config.toolbarButtons=[]',
+  'config.buttonsWithNotifyClick=[]',
+  'config.toolbarConfig.alwaysVisible=false',
+  'config.toolbarConfig.timeout=1',
+  'config.toolbarConfig.initialTimeout=1',
+  'config.notifications=[]',
+  'config.disabledNotifications=["notify.chatMessages","notify.participantJoined","notify.participantLeft"]',
+  'interfaceConfig.TOOLBAR_BUTTONS=[]',
+  'interfaceConfig.TOOLBAR_ALWAYS_VISIBLE=false',
+  'interfaceConfig.INITIAL_TOOLBAR_TIMEOUT=1',
+  'interfaceConfig.TOOLBAR_TIMEOUT=1',
+  'interfaceConfig.SHOW_JITSI_WATERMARK=false',
+  'interfaceConfig.SHOW_WATERMARK_FOR_GUESTS=false',
+  'interfaceConfig.SHOW_BRAND_WATERMARK=false',
+  'interfaceConfig.MOBILE_APP_PROMO=false',
+  'interfaceConfig.HIDE_INVITE_MORE_HEADER=true',
+  'interfaceConfig.DISABLE_JOIN_LEAVE_NOTIFICATIONS=true',
+  'interfaceConfig.DISABLE_FOCUS_INDICATOR=true',
+  'interfaceConfig.DISPLAY_WELCOME_PAGE_CONTENT=false',
+  'interfaceConfig.DISPLAY_WELCOME_FOOTER=false',
+];
+
+function mergeMeetHashParams(url: string, params: string[]): string {
+  const value = String(url || '').trim();
+  if (!value) return '';
+
+  const hashIndex = value.indexOf('#');
+  const base = hashIndex >= 0 ? value.slice(0, hashIndex) : value;
+  const existingHash = hashIndex >= 0 ? value.slice(hashIndex + 1) : '';
+
+  const map = new Map<string, string>();
+  const ingest = (chunk: string) => {
+    const raw = String(chunk || '').trim();
+    if (!raw) return;
+    const parts = raw.split('&');
+    for (const part of parts) {
+      if (!part) continue;
+      const eq = part.indexOf('=');
+      if (eq <= 0) {
+        map.set(part, '');
+        continue;
+      }
+      map.set(part.slice(0, eq), part.slice(eq + 1));
+    }
+  };
+
+  ingest(existingHash);
+  for (const param of params) ingest(param);
+
+  const hash = Array.from(map.entries())
+    .map(([k, v]) => (v === '' ? k : `${k}=${v}`))
+    .join('&');
+
+  return hash ? `${base}#${hash}` : base;
+}
+
+/**
+ * Ensure a meet URL uses app-owned chrome (no native Jitsi trays).
+ * Safe to call on already-configured URLs / backend embed_url.
+ */
+export function applyJitsiAppOwnedChrome(url: string): string {
+  if (!isDirectMeetUrl(url)) return String(url || '');
+  return mergeMeetHashParams(url, JITSI_APP_OWNED_CHROME_PARAMS);
+}
+
 /** Build meet URL — prefers backend embed_url (already includes app display name). */
 export function buildJitsiMeetUrl(
   jitsiRoom: string | null | undefined,
@@ -16,15 +96,8 @@ export function buildJitsiMeetUrl(
   if (!room) return '';
   const name = encodeURIComponent(displayName || 'Guest');
   const meetHost = String(host || JITSI_MEET_HOST).replace(/\/$/, '');
-  return (
-    `${meetHost}/${room}` +
-    `#config.prejoinPageEnabled=false` +
-    `&config.requireDisplayName=false` +
-    `&config.disableDeepLinking=true` +
-    `&config.startWithAudioMuted=false` +
-    `&config.startWithVideoMuted=false` +
-    `&config.disableInviteFunctions=true` +
-    `&userInfo.displayName="${name}"`
+  return applyJitsiAppOwnedChrome(
+    `${meetHost}/${room}#userInfo.displayName="${name}"`,
   );
 }
 

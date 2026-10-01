@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,47 +7,66 @@ import {
   RefreshControl,
   Pressable,
   Image,
-  Platform,
-  StatusBar,
   Switch,
   Alert,
+  Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   BadgeCheck,
   Bell,
   Video,
   Building,
-  Star,
   Users,
   Clock,
   MessageSquare,
   FileText,
   ChevronRight,
   TrendingUp,
+  Pill,
+  Sparkles,
 } from 'lucide-react-native';
 import { doctorPortalApi } from '../../lib/api';
-import { mapAppointment, mapDoctorProfile, formatDate } from '../../lib/mappers/doctorPortal';
+import { mapAppointment, mapDoctorProfile } from '../../lib/mappers/doctorPortal';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { StatusChip } from '../../components/StatusChip';
-import GreenGradientHeader from '../../components/GreenGradientHeader';
-import { colors, spacing, radius, shadows, TAB_BAR_CLEARANCE } from '../../theme';
+import TabScreenHeader from '../../components/TabScreenHeader';
+import { colors, radius, shadows, TAB_BAR_CLEARANCE } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
+
+function cleanComplaintText(reason?: string | null): string {
+  if (!reason) return 'General Consultation';
+  let cleaned = String(reason)
+    .replace(/\[DoctorApp demo\]/gi, '')
+    .replace(/\([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\)/g, '')
+    .trim();
+  cleaned = cleaned.replace(/^[-—–:\s]+|[-—–:\s]+$/g, '').trim();
+  return cleaned || 'General Consultation';
+}
+
+function appointmentSortTime(a: any): number {
+  if (a?.dateRaw) {
+    const t = new Date(a.dateRaw).getTime();
+    if (!Number.isNaN(t)) return t;
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
 
 export function DashboardScreen() {
   const { partner } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const queryClient = useQueryClient();
-  const insets = useSafeAreaInsets();
-  const topInset = Math.max(
-    insets.top,
-    Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
-  );
+  const { width: windowWidth } = useWindowDimensions();
+  const isCompact = windowWidth < 380;
+  const isNarrow = windowWidth < 360;
 
   const [isOnline, setIsOnline] = useState(true);
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  const slideUp = useRef(new Animated.Value(18)).current;
+  const pulse = useRef(new Animated.Value(1)).current;
 
   const profileQuery = useQuery({
     queryKey: ['doctor-profile'],
@@ -82,6 +101,38 @@ export function DashboardScreen() {
     }
   }, [profile?.online]);
 
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeIn, {
+        toValue: 1,
+        duration: 520,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideUp, {
+        toValue: 0,
+        duration: 520,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1.35,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [fadeIn, slideUp, pulse]);
+
   const onlineMut = useMutation({
     mutationFn: (newStatus: boolean) =>
       doctorPortalApi.updateProfile({ online: newStatus }),
@@ -114,8 +165,12 @@ export function DashboardScreen() {
   const stats = useMemo(() => {
     const raw = statsQuery.data?.stats || statsQuery.data || {};
     const totalToday = appointments.length || raw.todayAppointments || 0;
-    const videoCount = appointments.filter((a: any) => a.isOnline || a.type?.toLowerCase().includes('video')).length;
-    const inClinicCount = appointments.filter((a: any) => a.isInPerson || a.type?.toLowerCase().includes('clinic')).length;
+    const videoCount = appointments.filter(
+      (a: any) => a.isOnline || a.type?.toLowerCase().includes('video'),
+    ).length;
+    const inClinicCount = appointments.filter(
+      (a: any) => a.isInPerson || a.type?.toLowerCase().includes('clinic'),
+    ).length;
     const ratingVal = raw.rating ? Number(raw.rating).toFixed(1) : '5.0';
 
     return {
@@ -126,43 +181,141 @@ export function DashboardScreen() {
     };
   }, [statsQuery.data, appointments]);
 
-  const nextPatient = useMemo(() => {
-    const found = appointments.find(
-      (a: any) =>
-        a.status === 'confirmed' ||
-        a.status === 'in_progress' ||
-        a.status === 'pending' ||
-        a.status === 'upcoming',
+  const pendingAppointments = useMemo(() => {
+    return appointments.filter(
+      (a: any) => a.status === 'pending' || a.status === 'booked',
     );
-    if (found) {
-      return {
-        id: found.id,
-        name: found.patient || 'Patient',
-        time: found.time || '',
-        date: found.date || 'Today',
-        type: found.type?.toLowerCase().includes('clinic') ? 'In-Clinic' : 'Video Visit',
-        priority: found.status === 'in_progress' ? 'In Progress' : 'Confirmed Visit',
-        chiefComplaint: found.reason || 'Consultation',
-        ageGender: 'Patient',
+  }, [appointments]);
+
+  const nextPatient = useMemo(() => {
+    const actionable = appointments.filter((a: any) =>
+      ['in_progress', 'checked_in', 'confirmed', 'pending', 'booked', 'upcoming'].includes(
+        a.status,
+      ),
+    );
+
+    const ranked = [...actionable].sort((a: any, b: any) => {
+      const rank = (s: string) => {
+        if (s === 'in_progress') return 0;
+        if (s === 'checked_in') return 1;
+        return 2;
       };
+      const ra = rank(a.status);
+      const rb = rank(b.status);
+      if (ra !== rb) return ra - rb;
+      return appointmentSortTime(a) - appointmentSortTime(b);
+    });
+
+    const found = ranked[0];
+    if (!found) return null;
+
+    const isVideo = Boolean(
+      found.isOnline ||
+        (found.type?.toLowerCase().includes('video') && !found.isInPerson),
+    );
+    const isClinic = Boolean(
+      found.isInPerson || found.type?.toLowerCase().includes('clinic'),
+    );
+
+    let priorityLabel = 'Confirmed Visit';
+    let priorityKind: 'in_progress' | 'confirmed' | 'pending' = 'confirmed';
+    if (found.status === 'in_progress') {
+      priorityLabel = 'In Progress';
+      priorityKind = 'in_progress';
+    } else if (found.status === 'checked_in') {
+      priorityLabel = 'Checked In';
+      priorityKind = 'confirmed';
+    } else if (found.status === 'pending' || found.status === 'booked') {
+      priorityLabel = 'Pending Review';
+      priorityKind = 'pending';
     }
-    return null;
+
+    return {
+      id: found.id,
+      patientId: found.patientId,
+      name: found.patient || 'Patient',
+      time: found.time || '',
+      date: found.date || 'Today',
+      isVideo,
+      type: isClinic ? 'In-Clinic' : isVideo ? 'Video Visit' : found.type || 'Consultation',
+      priority: priorityLabel,
+      priorityKind,
+      chiefComplaint: cleanComplaintText(found.reason),
+      ageGender: 'Patient',
+      meetingUrl: found.meetingUrl,
+    };
   }, [appointments]);
 
   const agendaList = useMemo(() => {
-    return appointments.slice(0, 10).map((a: any) => ({
+    const statusRank: Record<string, number> = {
+      in_progress: 1,
+      checked_in: 2,
+      confirmed: 3,
+      pending: 4,
+      booked: 5,
+      completed: 6,
+      cancelled: 7,
+      no_show: 8,
+    };
+
+    const sorted = [...appointments].sort((a: any, b: any) => {
+      const rankA = statusRank[a.status] || 99;
+      const rankB = statusRank[b.status] || 99;
+      if (rankA !== rankB) return rankA - rankB;
+      return appointmentSortTime(a) - appointmentSortTime(b);
+    });
+
+    return sorted.slice(0, 8).map((a: any) => ({
       id: a.id,
       patient: a.patient || 'Patient',
       time: a.time || '',
       mode: a.type?.toLowerCase().includes('clinic') ? 'In-Clinic' : 'Video',
       status: a.status || 'confirmed',
+      isCompleted: a.status === 'completed' || a.status === 'cancelled',
     }));
   }, [appointments]);
 
-  // Dynamic Weekly Distribution
+  const [isMainScrollEnabled, setIsMainScrollEnabled] = useState(true);
+  const agendaScrollY = useRef(new Animated.Value(0)).current;
+  const [agendaContentHeight, setAgendaContentHeight] = useState(1);
+  const [agendaVisibleHeight, setAgendaVisibleHeight] = useState(1);
+
+  const isAgendaScrollable = agendaContentHeight > agendaVisibleHeight + 5;
+  const trackHeight = Math.max(0, agendaVisibleHeight - 16);
+  const thumbHeight = isAgendaScrollable
+    ? Math.max(28, (agendaVisibleHeight / agendaContentHeight) * trackHeight)
+    : 0;
+  const maxScroll = Math.max(1, agendaContentHeight - agendaVisibleHeight);
+  const maxThumbTop = Math.max(0, trackHeight - thumbHeight);
+
+  const thumbTranslateY = useMemo(() => {
+    return agendaScrollY.interpolate({
+      inputRange: [0, maxScroll],
+      outputRange: [0, maxThumbTop],
+      extrapolate: 'clamp',
+    });
+  }, [agendaScrollY, maxScroll, maxThumbTop]);
+
   const weeklyData = useMemo(() => {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const currentDayName = new Date().toLocaleDateString('en-US', { weekday: 'short' });
+    const today = new Date();
+    const currentDayName = today.toLocaleDateString('en-US', { weekday: 'short' });
+    const currentDayOfWeek = today.getDay();
+    const mondayOffset = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
+    const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    monday.setDate(monday.getDate() + mondayOffset);
+
+    const weekDates: Record<string, string> = {};
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dayNum = String(d.getDate()).padStart(2, '0');
+      weekDates[dayName] = `${y}-${m}-${dayNum}`;
+    }
+
     const counts: Record<string, number> = {
       Mon: 0,
       Tue: 0,
@@ -185,49 +338,68 @@ export function DashboardScreen() {
 
     return days.map(d => ({
       day: d,
+      dateStr: weekDates[d],
       count: counts[d],
       active: d === currentDayName,
     }));
   }, [appointments]);
 
+  const maxWeeklyCount = useMemo(() => {
+    const max = Math.max(...weeklyData.map(d => d.count), 0);
+    return Math.max(max, 4);
+  }, [weeklyData]);
+
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+
   return (
     <View style={styles.root}>
-      {/* Home header — shared L→R light→dark gradient */}
-      <GreenGradientHeader style={[styles.headerSection, { paddingTop: topInset + 8 }]}>
-        <View style={styles.headerContent}>
-        <View style={styles.headerTopRow}>
-          {/* Avatar */}
-          <Pressable
-            style={styles.avatarWrap}
-            onPress={() => (navigation as any).navigate('Profile')}>
-            {profile.photoUrl ? (
-              <Image source={{ uri: profile.photoUrl }} style={styles.doctorAvatarImg} />
-            ) : (
-              <View style={[styles.doctorAvatarImg, styles.doctorAvatarFallback]}>
-                <Text style={styles.doctorAvatarInitial}>
-                  {(profile.name || 'D').charAt(0).toUpperCase()}
-                </Text>
+      {/* Atmospheric mesh — brand teal, not flat white */}
+      <View pointerEvents="none" style={styles.atmosphere}>
+        <View style={styles.orbTop} />
+        <View style={styles.orbMid} />
+        <View style={styles.orbSoft} />
+      </View>
+
+      <TabScreenHeader
+        leading={
+          <View style={styles.headerTopRow}>
+            <Pressable
+              style={styles.avatarWrap}
+              onPress={() => (navigation as any).navigate('Profile')}>
+              {profile.photoUrl ? (
+                <Image source={{ uri: profile.photoUrl }} style={styles.doctorAvatarImg} />
+              ) : (
+                <View style={[styles.doctorAvatarImg, styles.doctorAvatarFallback]}>
+                  <Text style={styles.doctorAvatarInitial}>
+                    {(profile.name || 'D').charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.verifiedCheckBadge}>
+                <BadgeCheck size={14} color={colors.primaryLight} strokeWidth={2.5} />
               </View>
-            )}
-            <View style={styles.verifiedCheckBadge}>
-              <BadgeCheck size={14} color={colors.primaryLight} strokeWidth={2.5} />
-            </View>
-          </Pressable>
+            </Pressable>
 
-          {/* Doctor Info */}
-          <View style={styles.headerInfoCol}>
-            <View style={styles.nameRow}>
-              <Text style={styles.doctorNameText} numberOfLines={1}>
-                {profile.name || 'Doctor'}
+            <View style={styles.headerInfoCol}>
+              <View style={styles.nameRow}>
+                <Text style={styles.doctorNameText} numberOfLines={1}>
+                  {profile.name || 'Doctor'}
+                </Text>
+                <BadgeCheck size={16} color={colors.mint} strokeWidth={2.5} />
+              </View>
+              <Text style={styles.specialtyText} numberOfLines={1}>
+                {profile.specialty || 'Consultant'}
               </Text>
-              <BadgeCheck size={16} color={colors.mint} strokeWidth={2.5} />
             </View>
-            <Text style={styles.specialtyText} numberOfLines={1}>
-              {profile.specialty || 'Consultant Neurologist'}
-            </Text>
           </View>
-
-          {/* Notification Bell */}
+        }
+        right={
           <Pressable
             style={styles.headerIconBtn}
             onPress={() => navigation.navigate('Notifications')}
@@ -236,24 +408,25 @@ export function DashboardScreen() {
             <Bell size={20} color="#FFFFFF" strokeWidth={2} />
             <View style={styles.notificationDot} />
           </Pressable>
-        </View>
-
-        {/* Live Online/Offline Switch Bar */}
+        }>
         <View style={styles.liveBar}>
           <View style={styles.liveLeft}>
-            <View
+            <Animated.View
               style={[
                 styles.liveStatusDot,
                 isOnline ? styles.liveStatusDotOn : styles.liveStatusDotOff,
+                isOnline && { transform: [{ scale: pulse }] },
               ]}
             />
-            <Text style={styles.liveText}>
+            <Text style={styles.liveText} numberOfLines={1}>
               {isOnline ? 'Online for Telehealth' : 'Offline'}
             </Text>
           </View>
 
           <View style={styles.switchWrapper}>
-            <Text style={styles.switchLabel}>{isOnline ? 'Active' : 'Paused'}</Text>
+            {!isNarrow ? (
+              <Text style={styles.switchLabel}>{isOnline ? 'Active' : 'Paused'}</Text>
+            ) : null}
             <Switch
               value={isOnline}
               onValueChange={val => onlineMut.mutate(val)}
@@ -264,15 +437,16 @@ export function DashboardScreen() {
             />
           </View>
         </View>
-        </View>
-      </GreenGradientHeader>
+      </TabScreenHeader>
 
       <ScrollView
+        scrollEnabled={isMainScrollEnabled}
+        nestedScrollEnabled
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets={true}
+        automaticallyAdjustKeyboardInsets
         refreshControl={
           <RefreshControl
             refreshing={apptQuery.isRefetching || statsQuery.isRefetching}
@@ -280,251 +454,484 @@ export function DashboardScreen() {
             tintColor={colors.primary}
           />
         }>
-        {/* Practice summary — featured total + mode breakdown */}
-        <View style={styles.summaryPanel}>
-          <View style={styles.summaryHero}>
-            <Text style={styles.summaryEyebrow}>Today</Text>
-            <Text style={styles.summaryHeroValue}>{stats.todayConsultations}</Text>
-            <Text style={styles.summaryHeroLabel}>Consultations</Text>
-            <View style={styles.summaryRatingChip}>
-              <Star size={12} color={colors.warning} strokeWidth={2.2} fill={colors.warning} />
-              <Text style={styles.summaryRatingText}>{stats.rating}</Text>
-            </View>
-          </View>
-
-          <View style={styles.summaryModes}>
-            <View style={styles.summaryModeRow}>
-              <View style={[styles.summaryModeIcon, { backgroundColor: colors.mint }]}>
-                <Building size={16} color={colors.primaryDark} strokeWidth={2.2} />
-              </View>
-              <View style={styles.summaryModeCopy}>
-                <Text style={styles.summaryModeLabel}>In-Clinic</Text>
-                <Text style={styles.summaryModeHint}>In-person visits</Text>
-              </View>
-              <Text style={styles.summaryModeValue}>{stats.inClinic}</Text>
-            </View>
-
-            <View style={styles.summaryModeDivider} />
-
-            <View style={styles.summaryModeRow}>
-              <View style={[styles.summaryModeIcon, { backgroundColor: colors.infoBg }]}>
-                <Video size={16} color={colors.info} strokeWidth={2.2} />
-              </View>
-              <View style={styles.summaryModeCopy}>
-                <Text style={styles.summaryModeLabel}>Video</Text>
-                <Text style={styles.summaryModeHint}>Telehealth calls</Text>
-              </View>
-              <Text style={styles.summaryModeValue}>{stats.video}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Dominant Next Patient Hero Card */}
-        {nextPatient ? (
-          <View style={styles.heroCard}>
-            {/* Header Row: Label & Mode Badge */}
-            <View style={styles.heroHeaderRow}>
-              <View style={styles.heroLabelRow}>
-                <View style={styles.pulseLiveDot} />
-                <Text style={styles.heroSectionTitle}>NEXT PATIENT</Text>
-              </View>
-              <View style={styles.priorityBadge}>
-                <Text style={styles.priorityBadgeText}>{nextPatient.priority}</Text>
-              </View>
-            </View>
-
-            {/* Patient Details Row */}
-            <View style={styles.heroPatientRow}>
-              <View style={[styles.heroPatientAvatar, styles.avatarFallback]}>
-                <Text style={styles.avatarInitial}>
-                  {(nextPatient.name || 'P').charAt(0).toUpperCase()}
-                </Text>
-              </View>
-              <View style={styles.heroPatientMetaCol}>
-                <Text style={styles.heroPatientName}>{nextPatient.name}</Text>
-                <Text style={styles.heroPatientDemographics}>
-                  {nextPatient.ageGender} • {nextPatient.type}
-                </Text>
-                <View style={styles.heroTimeRow}>
-                  <Clock size={12} color={colors.primary} strokeWidth={2} />
-                  <Text style={styles.heroTimeText}>
-                    {nextPatient.date} • {nextPatient.time}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Chief Complaint Box */}
-            <View style={styles.complaintBox}>
-              <Text style={styles.complaintLabel}>Chief Complaint:</Text>
-              <Text style={styles.complaintText} numberOfLines={2}>
-                {nextPatient.chiefComplaint}
+        <Animated.View
+          style={{
+            opacity: fadeIn,
+            transform: [{ translateY: slideUp }],
+            gap: 16,
+          }}>
+          {/* Day opener — brand + count as hero signal */}
+          <View style={[styles.dayStage, isCompact && styles.dayStageCompact]}>
+            <View style={styles.dayStageCopy}>
+              <Text style={styles.dayEyebrow} numberOfLines={1}>
+                {todayLabel}
+              </Text>
+              <Text style={styles.dayHeadline} numberOfLines={2}>
+                Your practice,{'\n'}in motion
+              </Text>
+              <Text style={styles.daySub} numberOfLines={2}>
+                Consultations queued for today across clinic and video.
               </Text>
             </View>
 
-            {/* Clinical Action Buttons */}
-            <View style={styles.heroActionsRow}>
+            <Pressable
+              style={[styles.dayCountBlock, isCompact && styles.dayCountBlockWide]}
+              onPress={() =>
+                (navigation as any).navigate('Appointments', {
+                  status: 'today',
+                  mode: 'all',
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel={`Total consultations today: ${stats.todayConsultations}`}>
+              <Text style={styles.dayCountLabel}>Today</Text>
+              <Text style={styles.dayCountValue} numberOfLines={1}>
+                {stats.todayConsultations}
+              </Text>
+              <View style={styles.dayCountDelta}>
+                <Sparkles size={11} color={colors.mint} strokeWidth={2.2} />
+                <Text style={styles.dayCountDeltaText}>+{stats.todayConsultations}</Text>
+              </View>
+            </Pressable>
+          </View>
+
+          {/* Split metrics */}
+          <View style={[styles.metricRail, isCompact && styles.metricRailStack]}>
+            <Pressable
+              style={[styles.metricTile, styles.metricTileClinic, isCompact && styles.metricTileGrow]}
+              onPress={() =>
+                (navigation as any).navigate('Appointments', {
+                  status: 'today',
+                  mode: 'In-Clinic',
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel={`In-Clinic visits: ${stats.inClinic}`}>
+              <View style={styles.metricIconClinic}>
+                <Building size={16} color={colors.primaryDark} strokeWidth={2.2} />
+              </View>
+              <View style={styles.metricCopy}>
+                <Text style={styles.metricTitle} numberOfLines={1}>
+                  In-Clinic
+                </Text>
+                <Text style={styles.metricSub} numberOfLines={1}>
+                  In-person visits
+                </Text>
+              </View>
+              <Text style={styles.metricValueClinic} numberOfLines={1}>
+                {stats.inClinic}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[styles.metricTile, styles.metricTileVideo, isCompact && styles.metricTileGrow]}
+              onPress={() =>
+                (navigation as any).navigate('Appointments', {
+                  status: 'today',
+                  mode: 'Video',
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel={`Video consultations: ${stats.video}`}>
+              <View style={styles.metricIconVideo}>
+                <Video size={16} color="#0369A1" strokeWidth={2.2} />
+              </View>
+              <View style={styles.metricCopy}>
+                <Text style={styles.metricTitle} numberOfLines={1}>
+                  Video Call
+                </Text>
+                <Text style={styles.metricSub} numberOfLines={1}>
+                  Telehealth calls
+                </Text>
+              </View>
+              <Text style={styles.metricValueVideo} numberOfLines={1}>
+                {stats.video}
+              </Text>
+            </Pressable>
+          </View>
+
+          {pendingAppointments.length > 0 ? (
+            <Pressable
+              style={styles.pendingStrip}
+              onPress={() =>
+                (navigation as any).navigate('Appointments', { status: 'pending' })
+              }>
+              <View style={styles.pendingLeft}>
+                <View style={styles.pendingDot} />
+                <Text style={styles.pendingText} numberOfLines={2}>
+                  <Text style={styles.pendingBold}>
+                    {pendingAppointments.length} booking request
+                    {pendingAppointments.length > 1 ? 's' : ''}
+                  </Text>{' '}
+                  awaiting review
+                </Text>
+              </View>
+              <View style={styles.pendingAction}>
+                <Text style={styles.pendingActionText}>Review</Text>
+                <ChevronRight size={14} color="#92400E" strokeWidth={2.4} />
+              </View>
+            </Pressable>
+          ) : null}
+
+          {/* Next patient — elevated light card (readable, not a solid teal slab) */}
+          {nextPatient ? (
+            <View style={styles.nextStage}>
+              <View pointerEvents="none" style={styles.nextAccentRail} />
+              <View pointerEvents="none" style={styles.nextGlow} />
+
               <Pressable
-                style={styles.startConsultBtn}
+                style={styles.nextBody}
                 onPress={() =>
-                  navigation.navigate('Video', {
+                  navigation.navigate('AppointmentDetail', {
                     appointmentId: nextPatient.id,
-                    patientName: nextPatient.name,
                   })
                 }>
-                <Video size={16} color="#FFFFFF" strokeWidth={2.2} />
-                <Text style={styles.startConsultBtnText}>Start Consult</Text>
-              </Pressable>
+                <View style={styles.nextHeader}>
+                  <View style={styles.nextLabelRow}>
+                    <Animated.View
+                      style={[styles.nextPulse, { transform: [{ scale: pulse }] }]}
+                    />
+                    <Text style={styles.nextLabel}>NEXT PATIENT</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.priorityBadge,
+                      nextPatient.priorityKind === 'in_progress' &&
+                        styles.priorityBadgeProgress,
+                      nextPatient.priorityKind === 'pending' && styles.priorityBadgePending,
+                    ]}>
+                    <Text
+                      style={[
+                        styles.priorityBadgeText,
+                        nextPatient.priorityKind === 'in_progress' &&
+                          styles.priorityBadgeTextProgress,
+                        nextPatient.priorityKind === 'pending' &&
+                          styles.priorityBadgeTextPending,
+                      ]}
+                      numberOfLines={1}>
+                      {nextPatient.priority}
+                    </Text>
+                  </View>
+                </View>
 
-              <Pressable
-                style={styles.iconOutlineBtn}
-                onPress={() =>
-                  navigation.navigate('Chat', {
-                    appointmentId: nextPatient.id,
-                    patientName: nextPatient.name,
-                  })
-                }
-                accessibilityLabel="Open Chat">
-                <MessageSquare size={16} color={colors.primary} strokeWidth={2} />
-                <Text style={styles.iconOutlineBtnText}>Chat</Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.iconOutlineBtn}
-                onPress={() =>
-                  navigation.navigate('Consultation', {
-                    appointmentId: nextPatient.id,
-                    patientName: nextPatient.name,
-                  })
-                }
-                accessibilityLabel="View Records">
-                <FileText size={16} color={colors.primary} strokeWidth={2} />
-                <Text style={styles.iconOutlineBtnText}>Records</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.emptyHeroCard}>
-            <View style={styles.emptyHeroIconCircle}>
-              <Users size={22} color={colors.primary} strokeWidth={2.2} />
-            </View>
-            <Text style={styles.emptyHeroTitle}>No Patient In Waiting Queue</Text>
-            <Text style={styles.emptyHeroSub}>
-              You have no upcoming consultations in queue right now.
-            </Text>
-            <Pressable
-              style={styles.emptyHeroBtn}
-              onPress={() => (navigation as any).navigate('Appointments')}>
-              <Text style={styles.emptyHeroBtnText}>View Appointments Calendar &gt;</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {/* Today's Agenda Section */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitleText}>Today's Agenda</Text>
-          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-            <Pressable onPress={() => navigation.navigate('FollowUps')}>
-              <Text style={styles.sectionLinkText}>Follow-ups</Text>
-            </Pressable>
-            <Pressable onPress={() => (navigation as any).navigate('Appointments')}>
-              <Text style={styles.sectionLinkText}>See All &gt;</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.agendaCard}>
-          {agendaList.length === 0 ? (
-            <View style={styles.emptyAgendaWrap}>
-              <Clock size={24} color={colors.textMuted} strokeWidth={1.8} />
-              <Text style={styles.emptyAgendaText}>No appointments scheduled on your agenda</Text>
-            </View>
-          ) : (
-            <ScrollView
-              style={styles.agendaScroll}
-              contentContainerStyle={styles.agendaScrollContent}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              automaticallyAdjustKeyboardInsets={true}
-              bounces={agendaList.length > 3}>
-              {agendaList.map((item: any, idx: number) => {
-                const isLast = idx === agendaList.length - 1;
-                return (
-                  <Pressable
-                    key={item.id}
-                    style={[styles.agendaRow, !isLast && styles.agendaRowBorder]}
-                    onPress={() =>
-                      navigation.navigate('AppointmentDetail', {
-                        appointmentId: item.id,
-                      })
-                    }>
-                    <View style={[styles.agendaAvatar, styles.avatarFallback]}>
-                      <Text style={styles.avatarInitialSmall}>
-                        {(item.patient || 'P').charAt(0).toUpperCase()}
+                <View style={styles.nextPatientRow}>
+                  <View style={styles.nextAvatar}>
+                    <Text style={styles.nextAvatarInitial}>
+                      {(nextPatient.name || 'P').charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.nextMeta}>
+                    <Text style={styles.nextName} numberOfLines={1}>
+                      {nextPatient.name}
+                    </Text>
+                    <Text style={styles.nextDemographics} numberOfLines={1}>
+                      {nextPatient.ageGender} • {nextPatient.type}
+                    </Text>
+                    <View style={styles.nextTimeRow}>
+                      <Clock size={12} color={colors.primary} strokeWidth={2.2} />
+                      <Text style={styles.nextTime} numberOfLines={1}>
+                        {nextPatient.date} • {nextPatient.time}
                       </Text>
                     </View>
+                  </View>
+                  <ChevronRight size={18} color={colors.primaryLight} strokeWidth={2.2} />
+                </View>
 
-                    <View style={styles.agendaInfoCol}>
-                      <Text style={styles.agendaPatientName}>{item.patient}</Text>
-                      <View style={styles.agendaMetaRow}>
-                        <Clock size={11} color={colors.textMuted} strokeWidth={2} />
-                        <Text style={styles.agendaTimeText}>{item.time}</Text>
-                        <Text style={styles.agendaDot}>•</Text>
-                        <Text style={styles.agendaModeText}>{item.mode}</Text>
-                      </View>
+                <View style={styles.complaintPlane}>
+                  <Text style={styles.complaintLabel}>Chief Complaint</Text>
+                  <Text style={styles.complaintText} numberOfLines={3}>
+                    {nextPatient.chiefComplaint}
+                  </Text>
+                </View>
+              </Pressable>
+
+              <View style={[styles.nextActions, isCompact && styles.nextActionsWrap]}>
+                {nextPatient.isVideo ? (
+                  <Pressable
+                    style={[styles.primaryAction, isCompact && styles.actionFull]}
+                    onPress={() =>
+                      navigation.navigate('Video', {
+                        appointmentId: nextPatient.id,
+                        meetingUrl: nextPatient.meetingUrl,
+                        patientName: nextPatient.name,
+                      })
+                    }>
+                    <Video size={16} color="#FFFFFF" strokeWidth={2.2} />
+                    <Text style={styles.primaryActionText} numberOfLines={1}>
+                      Join Video
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    style={[styles.primaryAction, isCompact && styles.actionFull]}
+                    onPress={() =>
+                      navigation.navigate('Consultation', {
+                        appointmentId: nextPatient.id,
+                        patientName: nextPatient.name,
+                        patientId: nextPatient.patientId,
+                      })
+                    }>
+                    <FileText size={16} color="#FFFFFF" strokeWidth={2.2} />
+                    <Text style={styles.primaryActionText} numberOfLines={1}>
+                      {isNarrow ? 'Notes' : 'Start Visit Notes'}
+                    </Text>
+                  </Pressable>
+                )}
+
+                <Pressable
+                  style={[styles.ghostAction, isCompact && styles.actionHalf]}
+                  onPress={() =>
+                    navigation.navigate('Chat', {
+                      appointmentId: nextPatient.id,
+                      patientName: nextPatient.name,
+                    })
+                  }
+                  accessibilityLabel="Open Chat">
+                  <MessageSquare size={15} color={colors.primary} strokeWidth={2.2} />
+                  <Text style={styles.ghostActionText} numberOfLines={1}>
+                    Chat
+                  </Text>
+                </Pressable>
+
+                {nextPatient.isVideo ? (
+                  <Pressable
+                    style={[styles.ghostAction, isCompact && styles.actionHalf]}
+                    onPress={() =>
+                      navigation.navigate('Consultation', {
+                        appointmentId: nextPatient.id,
+                        patientName: nextPatient.name,
+                        patientId: nextPatient.patientId,
+                      })
+                    }
+                    accessibilityLabel="View Records">
+                    <FileText size={15} color={colors.primary} strokeWidth={2.2} />
+                    <Text style={styles.ghostActionText} numberOfLines={1}>
+                      Records
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    style={[styles.ghostAction, isCompact && styles.actionHalf]}
+                    onPress={() =>
+                      navigation.navigate('Prescription', {
+                        appointmentId: nextPatient.id,
+                        patientName: nextPatient.name,
+                      })
+                    }
+                    accessibilityLabel="Write Prescription">
+                    <Pill size={15} color={colors.primary} strokeWidth={2.2} />
+                    <Text style={styles.ghostActionText} numberOfLines={1}>
+                      {isNarrow ? 'Rx' : 'Prescribe'}
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          ) : (
+            <View style={styles.emptyNext}>
+              <View style={styles.emptyNextIcon}>
+                <Users size={22} color={colors.primary} strokeWidth={2.2} />
+              </View>
+              <Text style={styles.emptyNextTitle}>No patient in queue</Text>
+              <Text style={styles.emptyNextSub}>
+                You have no upcoming consultations waiting right now.
+              </Text>
+              <Pressable
+                style={styles.emptyNextBtn}
+                onPress={() => (navigation as any).navigate('Appointments')}>
+                <Text style={styles.emptyNextBtnText}>View appointments</Text>
+                <ChevronRight size={14} color={colors.primary} strokeWidth={2.4} />
+              </Pressable>
+            </View>
+          )}
+
+          {/* Agenda */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle} numberOfLines={1}>
+              Today's Agenda
+            </Text>
+            <View style={styles.sectionLinks}>
+              <Pressable onPress={() => navigation.navigate('FollowUps')} hitSlop={6}>
+                <Text style={styles.sectionLink}>Follow-ups</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => (navigation as any).navigate('Appointments')}
+                hitSlop={6}>
+                <Text style={styles.sectionLink}>See All</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View
+            style={styles.agendaCard}
+            onTouchStart={() => setIsMainScrollEnabled(false)}
+            onTouchEnd={() => setIsMainScrollEnabled(true)}
+            onTouchCancel={() => setIsMainScrollEnabled(true)}>
+            {agendaList.length === 0 ? (
+              <View style={styles.emptyAgenda}>
+                <Clock size={22} color={colors.textMuted} strokeWidth={1.8} />
+                <Text style={styles.emptyAgendaText}>
+                  No appointments scheduled on your agenda
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.agendaBody}>
+                <Animated.ScrollView
+                  style={styles.agendaScroll}
+                  contentContainerStyle={styles.agendaScrollContent}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                  overScrollMode="never"
+                  scrollEventThrottle={1}
+                  onScroll={Animated.event(
+                    [{ nativeEvent: { contentOffset: { y: agendaScrollY } } }],
+                    { useNativeDriver: true },
+                  )}
+                  onScrollBeginDrag={() => setIsMainScrollEnabled(false)}
+                  onScrollEndDrag={() => setIsMainScrollEnabled(true)}
+                  onMomentumScrollEnd={() => setIsMainScrollEnabled(true)}
+                  onContentSizeChange={(_w, h) => setAgendaContentHeight(h)}
+                  onLayout={e => setAgendaVisibleHeight(e.nativeEvent.layout.height)}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode="on-drag"
+                  bounces={agendaList.length > 3}>
+                  {agendaList.map((item: any, idx: number) => {
+                    const isLast = idx === agendaList.length - 1;
+                    return (
+                      <Pressable
+                        key={item.id}
+                        style={[
+                          styles.agendaRow,
+                          !isLast && styles.agendaRowBorder,
+                          item.isCompleted && styles.agendaRowCompleted,
+                        ]}
+                        onPress={() =>
+                          navigation.navigate('AppointmentDetail', {
+                            appointmentId: item.id,
+                          })
+                        }>
+                        <View style={styles.agendaTimeline}>
+                          <View
+                            style={[
+                              styles.agendaNode,
+                              item.isCompleted && styles.agendaNodeDone,
+                            ]}
+                          />
+                          {!isLast ? <View style={styles.agendaSpine} /> : null}
+                        </View>
+
+                        <View
+                          style={[
+                            styles.agendaAvatar,
+                            item.isCompleted && styles.agendaAvatarCompleted,
+                          ]}>
+                          <Text style={styles.agendaAvatarInitial}>
+                            {(item.patient || 'P').charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+
+                        <View style={styles.agendaInfo}>
+                          <Text
+                            style={[
+                              styles.agendaName,
+                              item.isCompleted && styles.agendaNameCompleted,
+                            ]}
+                            numberOfLines={1}>
+                            {item.patient}
+                          </Text>
+                          <View style={styles.agendaMeta}>
+                            <Text style={styles.agendaTime} numberOfLines={1}>
+                              {item.time}
+                            </Text>
+                            <Text style={styles.agendaDot}>•</Text>
+                            <Text style={styles.agendaMode} numberOfLines={1}>
+                              {item.mode}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.agendaChipWrap}>
+                          <StatusChip status={item.status} />
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </Animated.ScrollView>
+
+                {isAgendaScrollable ? (
+                  <View style={[styles.agendaTrack, { height: trackHeight }]}>
+                    <Animated.View
+                      style={[
+                        styles.agendaThumb,
+                        {
+                          height: thumbHeight,
+                          transform: [{ translateY: thumbTranslateY }],
+                        },
+                      ]}
+                    />
+                  </View>
+                ) : null}
+              </View>
+            )}
+          </View>
+
+          {/* Weekly */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle} numberOfLines={1}>
+              Weekly Overview
+            </Text>
+            <View style={styles.weekPill}>
+              <TrendingUp size={12} color={colors.success} strokeWidth={2.2} />
+              {!isNarrow ? (
+                <Text style={styles.weekPillText} numberOfLines={1}>
+                  From your appointments
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          <View style={styles.weekCard}>
+            <View style={styles.weekBars}>
+              {weeklyData.map(item => {
+                const barH =
+                  item.count > 0
+                    ? Math.max(14, Math.round((item.count / maxWeeklyCount) * 56))
+                    : 4;
+                return (
+                  <Pressable
+                    key={item.day}
+                    style={styles.weekCol}
+                    onPress={() =>
+                      (navigation as any).navigate('Appointments', {
+                        status: 'all',
+                        dateStr: item.dateStr,
+                      })
+                    }>
+                    <Text
+                      style={[styles.weekValue, item.active && styles.weekValueActive]}
+                      numberOfLines={1}>
+                      {item.count}
+                    </Text>
+                    <View style={styles.weekTrack}>
+                      <View
+                        style={[
+                          styles.weekFill,
+                          { height: barH },
+                          item.active && styles.weekFillActive,
+                        ]}
+                      />
                     </View>
-
-                    <StatusChip status={item.status} />
-                    <ChevronRight size={16} color={colors.textMuted} strokeWidth={2} />
+                    <Text
+                      style={[styles.weekDay, item.active && styles.weekDayActive]}
+                      numberOfLines={1}>
+                      {isNarrow ? item.day.charAt(0) : item.day}
+                    </Text>
                   </Pressable>
                 );
               })}
-            </ScrollView>
-          )}
-        </View>
-
-        {/* Weekly Overview Trend Chart */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitleText}>Weekly Overview</Text>
-          <View style={styles.weeklyGrowthPill}>
-            <TrendingUp size={12} color={colors.success} strokeWidth={2.2} />
-            <Text style={styles.weeklyGrowthText}>From your appointments</Text>
+            </View>
           </View>
-        </View>
-
-        <View style={styles.weeklyChartCard}>
-          <View style={styles.barsContainer}>
-            {weeklyData.map(item => (
-              <View key={item.day} style={styles.barColumn}>
-                <Text
-                  style={[
-                    styles.barValueText,
-                    item.active && styles.barValueTextActive,
-                  ]}>
-                  {item.count}
-                </Text>
-                <View style={styles.barTrack}>
-                  <View
-                    style={[
-                      styles.barFill,
-                      { height: `${Math.min(100, (item.count / 30) * 100)}%` },
-                      item.active && styles.barFillActive,
-                    ]}
-                  />
-                </View>
-                <Text
-                  style={[
-                    styles.barDayText,
-                    item.active && styles.barDayTextActive,
-                  ]}>
-                  {item.day}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
+        </Animated.View>
       </ScrollView>
     </View>
   );
@@ -533,48 +940,60 @@ export function DashboardScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#F3F7F8',
   },
+  atmosphere: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  orbTop: {
+    position: 'absolute',
+    top: -40,
+    right: -60,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(0, 109, 114, 0.07)',
+  },
+  orbMid: {
+    position: 'absolute',
+    top: 280,
+    left: -80,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(0, 140, 145, 0.05)',
+  },
+  orbSoft: {
+    position: 'absolute',
+    bottom: 120,
+    right: -40,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(221, 246, 242, 0.55)',
+  },
+
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: TAB_BAR_CLEARANCE + 30,
-    gap: 14,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: TAB_BAR_CLEARANCE + 36,
   },
 
-  /* Header — shared GreenGradientHeader fill */
-  headerSection: {
-    paddingBottom: 14,
-    borderBottomLeftRadius: radius.xl,
-    borderBottomRightRadius: radius.xl,
-  },
-  headerContent: {
-    paddingHorizontal: 20,
-    gap: 10,
-  },
-
-  /* Live Online/Offline Bar */
-  liveBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: radius.pill,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-  },
   headerTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    minWidth: 0,
   },
   avatarWrap: {
     position: 'relative',
+    flexShrink: 0,
   },
   doctorAvatarImg: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     borderWidth: 2,
     borderColor: '#FFFFFF',
   },
@@ -588,21 +1007,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 18,
   },
-  avatarFallback: {
-    backgroundColor: colors.aqua,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  avatarInitialSmall: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary,
-  },
   verifiedCheckBadge: {
     position: 'absolute',
     bottom: -2,
@@ -612,21 +1016,24 @@ const styles = StyleSheet.create({
   },
   headerInfoCol: {
     flex: 1,
+    minWidth: 0,
     gap: 1,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
+    minWidth: 0,
   },
   doctorNameText: {
-    fontSize: 16,
+    flexShrink: 1,
+    fontSize: 20,
     fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: -0.2,
+    letterSpacing: -0.4,
   },
   specialtyText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.85)',
   },
@@ -637,7 +1044,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
+    flexShrink: 0,
   },
   notificationDot: {
     position: 'absolute',
@@ -651,16 +1058,29 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
 
-
+  liveBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    gap: 8,
+    minWidth: 0,
+  },
   liveLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flex: 1,
+    minWidth: 0,
   },
   liveStatusDot: {
     width: 7,
     height: 7,
     borderRadius: 3.5,
+    flexShrink: 0,
   },
   liveStatusDotOn: {
     backgroundColor: colors.mint,
@@ -669,6 +1089,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.45)',
   },
   liveText: {
+    flexShrink: 1,
     fontSize: 11,
     fontWeight: '600',
     color: '#FFFFFF',
@@ -677,6 +1098,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
+    flexShrink: 0,
   },
   switchLabel: {
     fontSize: 10,
@@ -684,448 +1106,724 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.9)',
   },
 
-  /* Practice summary panel */
-  summaryPanel: {
+  dayStage: {
     flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-    ...shadows.card,
+    alignItems: 'stretch',
+    gap: 14,
+    minWidth: 0,
   },
-  summaryHero: {
-    width: '38%',
-    backgroundColor: colors.aqua,
-    borderRightWidth: 1,
-    borderRightColor: '#B4E8E1',
-    paddingVertical: 16,
-    paddingHorizontal: 14,
+  dayStageCompact: {
+    flexDirection: 'column',
+  },
+  dayStageCopy: {
+    flex: 1.35,
+    minWidth: 0,
     justifyContent: 'center',
-    gap: 2,
+    gap: 6,
   },
-  summaryEyebrow: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.primary,
-    letterSpacing: 0.8,
+  dayEyebrow: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primaryLight,
+    letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
-  summaryHeroValue: {
-    fontSize: 36,
+  dayHeadline: {
+    fontSize: 26,
     fontWeight: '800',
-    color: colors.primaryDark,
-    letterSpacing: -1,
-    marginTop: 2,
+    color: colors.textPrimary,
+    letterSpacing: -0.9,
+    lineHeight: 30,
   },
-  summaryHeroLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+  daySub: {
+    fontSize: 13,
+    lineHeight: 18,
     color: colors.textSecondary,
+    fontWeight: '500',
   },
-  summaryRatingChip: {
-    alignSelf: 'flex-start',
+  dayCountBlock: {
+    width: 108,
+    borderRadius: 22,
+    backgroundColor: colors.primaryDark,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: 2,
+    overflow: 'hidden',
+    flexShrink: 0,
+    ...shadows.cardElevated,
+  },
+  dayCountBlockWide: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+  },
+  dayCountLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 0.3,
+  },
+  dayCountValue: {
+    fontSize: 40,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -1.6,
+    lineHeight: 44,
+  },
+  dayCountDelta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 10,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
+    marginTop: 2,
   },
-  summaryRatingText: {
+  dayCountDeltaText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textPrimary,
+    color: colors.mint,
   },
-  summaryModes: {
+
+  metricRail: {
+    flexDirection: 'row',
+    gap: 10,
+    minWidth: 0,
+  },
+  metricRailStack: {
+    flexDirection: 'column',
+  },
+  metricTile: {
     flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    justifyContent: 'center',
-    gap: 8,
-  },
-  summaryModeRow: {
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1,
   },
-  summaryModeIcon: {
+  metricTileGrow: {
+    flex: 0,
+    width: '100%',
+  },
+  metricTileClinic: {
+    backgroundColor: '#F0FDF9',
+    borderColor: '#A7F3D0',
+  },
+  metricTileVideo: {
+    backgroundColor: '#F0F9FF',
+    borderColor: '#BAE6FD',
+  },
+  metricIconClinic: {
     width: 34,
     height: 34,
     borderRadius: 17,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  summaryModeCopy: {
+  metricIconVideo: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  metricCopy: {
     flex: 1,
+    minWidth: 0,
     gap: 1,
   },
-  summaryModeLabel: {
+  metricTitle: {
     fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  summaryModeHint: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: colors.textMuted,
-  },
-  summaryModeValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.textPrimary,
-    letterSpacing: -0.4,
-    minWidth: 28,
-    textAlign: 'right',
-  },
-  summaryModeDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginLeft: 44,
-  },
-
-  /* Dominant Next Patient Hero Card — clear teal theme */
-  heroCard: {
-    backgroundColor: colors.aqua,
-    borderRadius: radius.xl,
-    padding: 16,
-    borderWidth: 1.5,
-    borderColor: '#B4E8E1',
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-    gap: 12,
-    ...shadows.cardElevated,
-  },
-  heroHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  heroLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  pulseLiveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.primary,
-  },
-  heroSectionTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.primary,
-    letterSpacing: 0.5,
-  },
-  priorityBadge: {
-    backgroundColor: colors.dangerBg,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radius.pill,
-  },
-  priorityBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.danger,
-  },
-  heroPatientRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  heroPatientAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  heroPatientMetaCol: {
-    flex: 1,
-    gap: 2,
-  },
-  heroPatientName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  heroPatientDemographics: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontWeight: '500',
-  },
-  heroTimeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 1,
-  },
-  heroTimeText: {
-    fontSize: 11,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  complaintBox: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#B4E8E1',
-    gap: 2,
-  },
-  complaintLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.primary,
-    textTransform: 'uppercase',
-  },
-  complaintText: {
-    fontSize: 11,
-    color: colors.textPrimary,
-    lineHeight: 15,
-  },
-  heroActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
-  },
-  startConsultBtn: {
-    flex: 1.4,
-    height: 40,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    ...shadows.cardSoft,
-  },
-  startConsultBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  iconOutlineBtn: {
-    flex: 1,
-    height: 40,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  iconOutlineBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-
-  /* Agenda Section */
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 2,
-  },
-  sectionTitleText: {
-    fontSize: 14,
     fontWeight: '700',
     color: colors.textPrimary,
     letterSpacing: -0.2,
   },
-  sectionLinkText: {
+  metricSub: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: colors.textMuted,
+  },
+  metricValueClinic: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.primaryDark,
+    letterSpacing: -0.6,
+    flexShrink: 0,
+  },
+  metricValueVideo: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0369A1',
+    letterSpacing: -0.6,
+    flexShrink: 0,
+  },
+
+  pendingStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFBEB',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
+    minWidth: 0,
+  },
+  pendingLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+  },
+  pendingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#D97706',
+    flexShrink: 0,
+  },
+  pendingText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#92400E',
+    fontWeight: '500',
+  },
+  pendingBold: {
+    fontWeight: '700',
+  },
+  pendingAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    flexShrink: 0,
+  },
+  pendingActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B45309',
+  },
+
+  nextStage: {
+    position: 'relative',
+    backgroundColor: colors.surface,
+    borderRadius: 22,
+    padding: 16,
+    gap: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#D7ECEA',
+    ...shadows.cardElevated,
+  },
+  nextAccentRail: {
+    position: 'absolute',
+    left: 0,
+    top: 18,
+    bottom: 18,
+    width: 4,
+    borderTopRightRadius: 4,
+    borderBottomRightRadius: 4,
+    backgroundColor: colors.primary,
+  },
+  nextGlow: {
+    position: 'absolute',
+    top: -36,
+    right: -28,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(0, 109, 114, 0.06)',
+  },
+  nextBody: {
+    gap: 14,
+    paddingLeft: 6,
+  },
+  nextHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    minWidth: 0,
+  },
+  nextLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  nextPulse: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: colors.primary,
+    flexShrink: 0,
+  },
+  nextLabel: {
     fontSize: 11,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: 0.85,
+  },
+  priorityBadge: {
+    backgroundColor: colors.aqua,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    flexShrink: 0,
+    maxWidth: '48%',
+    borderWidth: 1,
+    borderColor: '#B4E8E1',
+  },
+  priorityBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  priorityBadgeProgress: {
+    backgroundColor: colors.successBg,
+    borderColor: '#A7F3D0',
+  },
+  priorityBadgeTextProgress: {
+    color: '#065F46',
+  },
+  priorityBadgePending: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  priorityBadgeTextPending: {
+    color: '#92400E',
+  },
+  nextPatientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minWidth: 0,
+  },
+  nextAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.aqua,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  nextAvatarInitial: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.primaryDark,
+  },
+  nextMeta: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  nextName: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    letterSpacing: -0.45,
+  },
+  nextDemographics: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  nextTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 1,
+    minWidth: 0,
+  },
+  nextTime: {
+    flexShrink: 1,
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  complaintPlane: {
+    backgroundColor: '#F4FBFA',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#D7ECEA',
+    gap: 4,
+  },
+  complaintLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: 0.55,
+    textTransform: 'uppercase',
+  },
+  complaintText: {
+    fontSize: 13,
+    color: colors.textPrimary,
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  nextActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+    paddingLeft: 6,
+  },
+  nextActionsWrap: {
+    flexWrap: 'wrap',
+  },
+  primaryAction: {
+    flexGrow: 1.4,
+    flexShrink: 1,
+    flexBasis: 120,
+    minWidth: 0,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+  },
+  primaryActionText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    flexShrink: 1,
+  },
+  ghostAction: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 72,
+    minWidth: 0,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+  },
+  ghostActionText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+    flexShrink: 1,
+  },
+  actionFull: {
+    flexBasis: '100%',
+    width: '100%',
+  },
+  actionHalf: {
+    flexBasis: '46%',
+  },
+
+  emptyNext: {
+    backgroundColor: colors.aqua,
+    borderRadius: 22,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: '#B4E8E1',
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyNextIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyNextTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  emptyNextSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 17,
+    paddingHorizontal: 8,
+  },
+  emptyNextBtn: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  emptyNextBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    minWidth: 0,
+    marginTop: 2,
+  },
+  sectionTitle: {
+    flexShrink: 1,
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    letterSpacing: -0.35,
+  },
+  sectionLinks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexShrink: 0,
+  },
+  sectionLink: {
+    fontSize: 12,
     fontWeight: '600',
     color: colors.primaryLight,
   },
-  weeklyGrowthPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: colors.successBg,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radius.pill,
-  },
-  weeklyGrowthText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.success,
-  },
+
   agendaCard: {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 12,
+    borderColor: 'rgba(16, 35, 63, 0.06)',
+    paddingLeft: 10,
+    paddingRight: 6,
     overflow: 'hidden',
     ...shadows.cardSoft,
   },
+  agendaBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+  },
   agendaScroll: {
-    maxHeight: 240,
+    flex: 1,
+    maxHeight: 248,
+    paddingRight: 4,
+    minWidth: 0,
   },
   agendaScrollContent: {
     paddingBottom: 4,
   },
+  agendaTrack: {
+    width: 4,
+    backgroundColor: '#E6F4F2',
+    borderRadius: radius.pill,
+    marginLeft: 4,
+    marginRight: 2,
+    alignSelf: 'center',
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  agendaThumb: {
+    width: 4,
+    backgroundColor: colors.primary,
+    borderRadius: radius.pill,
+  },
   agendaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    gap: 10,
+    paddingVertical: 11,
+    gap: 8,
+    minWidth: 0,
   },
   agendaRowBorder: {
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+  },
+  agendaRowCompleted: {
+    opacity: 0.62,
+  },
+  agendaTimeline: {
+    width: 10,
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    paddingTop: 12,
+    flexShrink: 0,
+  },
+  agendaNode: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.mint,
+  },
+  agendaNodeDone: {
+    backgroundColor: colors.textMuted,
+    borderColor: colors.border,
+  },
+  agendaSpine: {
+    flex: 1,
+    width: 1.5,
+    backgroundColor: colors.border,
+    marginTop: 4,
   },
   agendaAvatar: {
     width: 36,
     height: 36,
     borderRadius: 18,
+    backgroundColor: colors.aqua,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
-  agendaInfoCol: {
+  agendaAvatarCompleted: {
+    backgroundColor: '#E2E8F0',
+  },
+  agendaAvatarInitial: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  agendaInfo: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
-  agendaPatientName: {
+  agendaName: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.textPrimary,
   },
-  agendaMetaRow: {
+  agendaNameCompleted: {
+    color: colors.textSecondary,
+  },
+  agendaMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    minWidth: 0,
   },
-  agendaTimeText: {
-    fontSize: 10,
+  agendaTime: {
+    fontSize: 11,
     color: colors.textMuted,
+    fontWeight: '500',
+    flexShrink: 0,
   },
   agendaDot: {
     fontSize: 10,
     color: colors.textMuted,
   },
-  agendaModeText: {
-    fontSize: 10,
+  agendaMode: {
+    fontSize: 11,
     fontWeight: '600',
     color: colors.primaryLight,
+    flexShrink: 1,
+  },
+  agendaChipWrap: {
+    flexShrink: 0,
+    maxWidth: 104,
+  },
+  emptyAgenda: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 28,
+    gap: 8,
+  },
+  emptyAgendaText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingHorizontal: 16,
   },
 
-  /* Weekly Overview Chart */
-  weeklyChartCard: {
+  weekPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.successBg,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    flexShrink: 0,
+    maxWidth: '52%',
+  },
+  weekPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.success,
+    flexShrink: 1,
+  },
+  weekCard: {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: 14,
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(16, 35, 63, 0.06)',
     ...shadows.cardSoft,
   },
-  barsContainer: {
+  weekBars: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    height: 100,
-    paddingTop: 10,
+    height: 108,
+    minWidth: 0,
   },
-  barColumn: {
+  weekCol: {
     flex: 1,
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
+    minWidth: 0,
   },
-  barValueText: {
-    fontSize: 9,
+  weekValue: {
+    fontSize: 10,
     color: colors.textMuted,
     fontWeight: '600',
   },
-  barValueTextActive: {
+  weekValueActive: {
     color: colors.primary,
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  barTrack: {
-    width: 14,
+  weekTrack: {
+    width: 12,
     height: 60,
-    backgroundColor: colors.background,
-    borderRadius: radius.xs,
+    backgroundColor: '#EEF4F5',
+    borderRadius: 8,
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
-  barFill: {
+  weekFill: {
     width: '100%',
     backgroundColor: colors.iceBlue,
-    borderRadius: radius.xs,
+    borderRadius: 8,
   },
-  barFillActive: {
+  weekFillActive: {
     backgroundColor: colors.primary,
   },
-  barDayText: {
+  weekDay: {
     fontSize: 10,
     color: colors.textMuted,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  barDayTextActive: {
+  weekDayActive: {
     color: colors.primary,
-    fontWeight: '700',
-  },
-
-  /* Empty State Styles */
-  emptyHeroCard: {
-    backgroundColor: colors.aqua,
-    borderRadius: radius.xl,
-    padding: 20,
-    borderWidth: 1.5,
-    borderColor: '#B4E8E1',
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    ...shadows.cardSoft,
-  },
-  emptyHeroIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-  },
-  emptyHeroTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  emptyHeroSub: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: 20,
-    lineHeight: 16,
-  },
-  emptyHeroBtn: {
-    marginTop: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  emptyHeroBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  emptyAgendaWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 24,
-    gap: 6,
-  },
-  emptyAgendaText: {
-    fontSize: 11,
-    color: colors.textMuted,
+    fontWeight: '800',
   },
 });

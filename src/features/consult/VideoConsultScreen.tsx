@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,10 @@ import {
   KeyboardAvoidingView,
   Dimensions,
   useWindowDimensions,
+  LayoutAnimation,
+  UIManager,
+  Keyboard,
+  findNodeHandle,
 } from 'react-native';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -45,6 +49,8 @@ import {
   X,
   FileSignature,
   ShieldCheck,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react-native';
 import { doctorPortalApi, telehealthApi } from '../../lib/api';
 import { useAuth } from '../../lib/auth/AuthContext';
@@ -52,11 +58,20 @@ import { resolveFollowUpDate } from '../../lib/mappers/doctorPortal';
 import { TelehealthVideoWebView } from '../../lib/telehealth/TelehealthVideoWebView';
 import {
   buildJitsiMeetUrl,
+  applyJitsiAppOwnedChrome,
   isDirectMeetUrl,
   resolveVideoRoomFromAccess,
 } from '../../lib/telehealth/videoRoom';
 import { colors, radius, shadows } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
+import EndConsultationModal from '../../components/EndConsultationModal';
+
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const MODAL_SCROLL_MAX = Dimensions.get('window').height * 0.55;
 
@@ -107,8 +122,12 @@ export function VideoConsultScreen() {
 
   // Active workspace tab: 'symptoms' | 'diagnosis' | 'treatment' | 'followup'
   const [activeTab, setActiveTab] = useState<'symptoms' | 'diagnosis' | 'treatment' | 'followup'>('symptoms');
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(true);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const [webViewReady, setWebViewReady] = useState(false);
+  const workspaceScrollRef = useRef<ScrollView>(null);
+  const isTyping = keyboardHeight > 0;
 
   // Media Controls
   const [isMuted, setIsMuted] = useState(false);
@@ -137,6 +156,7 @@ export function VideoConsultScreen() {
   const [rxModalOpen, setRxModalOpen] = useState(false);
   const [rxItems, setRxItems] = useState<RxItem[]>([EMPTY_RX]);
   const [labOpen, setLabOpen] = useState(false);
+  const [showEndConfirmModal, setShowEndConfirmModal] = useState(false);
 
   const videoQuery = useQuery({
     queryKey: ['appointment-consultation', appointmentId],
@@ -182,7 +202,9 @@ export function VideoConsultScreen() {
     'Doctor';
 
   const [url, setUrl] = useState(
-    isDirectMeetUrl(route.params.meetingUrl) ? route.params.meetingUrl! : '',
+    isDirectMeetUrl(route.params.meetingUrl)
+      ? applyJitsiAppOwnedChrome(route.params.meetingUrl!)
+      : '',
   );
   const [videoError, setVideoError] = useState<string | null>(null);
 
@@ -196,7 +218,7 @@ export function VideoConsultScreen() {
     }
     if (embedUrl && isDirectMeetUrl(embedUrl)) {
       setVideoError(null);
-      setUrl(embedUrl);
+      setUrl(applyJitsiAppOwnedChrome(embedUrl));
       return;
     }
     if (jitsiRoom) {
@@ -206,7 +228,7 @@ export function VideoConsultScreen() {
     }
     if (isDirectMeetUrl(route.params.meetingUrl)) {
       setVideoError(null);
-      setUrl(route.params.meetingUrl!);
+      setUrl(applyJitsiAppOwnedChrome(route.params.meetingUrl!));
       return;
     }
     setUrl('');
@@ -322,17 +344,21 @@ export function VideoConsultScreen() {
       return doctorPortalApi.updateAppointmentStatus(appointmentId, 'completed', notes);
     },
     onSuccess: (result) => {
+      setShowEndConfirmModal(false);
       queryClient.invalidateQueries({ queryKey: ['doctor-appointments'] });
       queryClient.invalidateQueries({ queryKey: ['doctor-stats'] });
       queryClient.invalidateQueries({ queryKey: ['doctor-follow-ups'] });
-      if (result?.alreadyCompleted) {
+      if ((result as any)?.alreadyCompleted) {
         Alert.alert('Saved', 'Notes updated. This consultation was already completed.');
         return;
       }
       Alert.alert('Consultation Completed', 'Clinical documentation and consultation record saved.');
       navigation.goBack();
     },
-    onError: (err: Error) => Alert.alert('Error', err.message),
+    onError: (err: Error) => {
+      setShowEndConfirmModal(false);
+      Alert.alert('Error', err.message);
+    },
   });
 
   const issueRxMut = useMutation({
@@ -419,13 +445,77 @@ export function VideoConsultScreen() {
     setShowAddTreatment(false);
   };
 
+  const toggleWorkspace = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    Keyboard.dismiss();
+    setWorkspaceExpanded(open => !open);
+  };
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = (event: { endCoordinates?: { height?: number } }) => {
+      const nextHeight = event?.endCoordinates?.height || 0;
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setKeyboardHeight(nextHeight);
+      if (!workspaceExpanded) {
+        setWorkspaceExpanded(true);
+      }
+    };
+    const onHide = () => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setKeyboardHeight(0);
+    };
+
+    const showSub = Keyboard.addListener(showEvent, onShow);
+    const hideSub = Keyboard.addListener(hideEvent, onHide);
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [workspaceExpanded]);
+
+  const ensureFocusedInputVisible = useCallback((event: { target?: unknown }) => {
+    if (!workspaceExpanded) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setWorkspaceExpanded(true);
+    }
+    const inputHandle = findNodeHandle(event?.target as any);
+    const scrollResponder = (workspaceScrollRef.current as any)?.getScrollResponder?.();
+    const lift = () => {
+      if (
+        inputHandle &&
+        scrollResponder?.scrollResponderScrollNativeHandleToKeyboard
+      ) {
+        scrollResponder.scrollResponderScrollNativeHandleToKeyboard(
+          inputHandle,
+          168,
+          true,
+        );
+        return;
+      }
+      workspaceScrollRef.current?.scrollToEnd({ animated: true });
+    };
+    setTimeout(lift, Platform.OS === 'ios' ? 60 : 140);
+    setTimeout(lift, Platform.OS === 'ios' ? 200 : 300);
+  }, [workspaceExpanded]);
+
+  const compactVideoHeight = Math.round(topInset + 112);
+  const activeVideoHeight = isTyping ? compactVideoHeight : videoStageHeight;
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#07141C" />
 
-      {/* Cinematic Video Stage */}
+      {/* Cinematic Video Stage — shrinks while typing so notes stay above keyboard */}
       <View
-        style={[styles.videoStage, { height: videoStageHeight, paddingTop: topInset }]}
+        style={[
+          styles.videoStage,
+          workspaceExpanded
+            ? { height: activeVideoHeight, paddingTop: topInset }
+            : { flex: 1, paddingTop: topInset },
+        ]}
         pointerEvents="box-none">
         {url ? (
           <TelehealthVideoWebView
@@ -475,15 +565,11 @@ export function VideoConsultScreen() {
           </>
         )}
 
-        {/* Gradient scrims only while waiting — hide when live so Jitsi UI stays visible */}
         {!webViewReady ? (
-          <>
-            <View style={styles.videoTopScrim} pointerEvents="none" />
-            <View style={styles.videoBottomScrim} pointerEvents="none" />
-          </>
+          <View style={styles.videoBottomScrim} pointerEvents="none" />
         ) : null}
 
-        {/* Top overlay */}
+        {/* Top overlay — contrast lives on controls only (no full-width banner) */}
         <View style={[styles.videoTopBar, { top: topInset + 8 }]} pointerEvents="box-none">
           <Pressable
             style={styles.glassIconBtn}
@@ -529,60 +615,62 @@ export function VideoConsultScreen() {
           </View>
         </View>
 
-        {/* Floating call controls — sit above Jitsi toolbar area */}
-        <View style={styles.callControlsFloatingBar} pointerEvents="box-none">
-          <View style={styles.callControlsGlass}>
+        {/* Call controls — full bar in call mode; compact mute/end while documenting */}
+        <View
+          style={[
+            styles.callControlsFloatingBar,
+            isTyping && styles.callControlsFloatingBarTyping,
+          ]}
+          pointerEvents="box-none">
+          <View style={[styles.callControlsGlass, isTyping && styles.callControlsGlassTyping]}>
             <Pressable
-              style={[styles.controlCircleBtn, isMuted && styles.controlCircleBtnMuted]}
+              style={[
+                styles.controlCircleBtn,
+                isTyping && styles.controlCircleBtnTyping,
+                isMuted && styles.controlCircleBtnMuted,
+              ]}
               onPress={() => setIsMuted(!isMuted)}
               accessibilityLabel={isMuted ? 'Unmute' : 'Mute'}>
               {isMuted ? (
-                <MicOff size={18} color="#FFFFFF" strokeWidth={2.2} />
+                <MicOff size={isTyping ? 16 : 18} color="#FFFFFF" strokeWidth={2.2} />
               ) : (
-                <Mic size={18} color="#FFFFFF" strokeWidth={2.2} />
+                <Mic size={isTyping ? 16 : 18} color="#FFFFFF" strokeWidth={2.2} />
               )}
             </Pressable>
 
-            <Pressable
-              style={[styles.controlCircleBtn, isCameraOff && styles.controlCircleBtnMuted]}
-              onPress={() => setIsCameraOff(!isCameraOff)}
-              accessibilityLabel={isCameraOff ? 'Camera on' : 'Camera off'}>
-              {isCameraOff ? (
-                <VideoOff size={18} color="#FFFFFF" strokeWidth={2.2} />
-              ) : (
-                <Video size={18} color="#FFFFFF" strokeWidth={2.2} />
-              )}
-            </Pressable>
+            {!isTyping ? (
+              <>
+                <Pressable
+                  style={[styles.controlCircleBtn, isCameraOff && styles.controlCircleBtnMuted]}
+                  onPress={() => setIsCameraOff(!isCameraOff)}
+                  accessibilityLabel={isCameraOff ? 'Camera on' : 'Camera off'}>
+                  {isCameraOff ? (
+                    <VideoOff size={18} color="#FFFFFF" strokeWidth={2.2} />
+                  ) : (
+                    <Video size={18} color="#FFFFFF" strokeWidth={2.2} />
+                  )}
+                </Pressable>
+
+                <Pressable
+                  style={[styles.controlCircleBtn, !isSpeakerOn && styles.controlCircleBtnMuted]}
+                  onPress={() => setIsSpeakerOn(!isSpeakerOn)}
+                  accessibilityLabel={isSpeakerOn ? 'Speaker off' : 'Speaker on'}>
+                  {isSpeakerOn ? (
+                    <Volume2 size={18} color="#FFFFFF" strokeWidth={2.2} />
+                  ) : (
+                    <VolumeX size={18} color="#FFFFFF" strokeWidth={2.2} />
+                  )}
+                </Pressable>
+              </>
+            ) : null}
 
             <Pressable
-              style={[styles.controlCircleBtn, !isSpeakerOn && styles.controlCircleBtnMuted]}
-              onPress={() => setIsSpeakerOn(!isSpeakerOn)}
-              accessibilityLabel={isSpeakerOn ? 'Speaker off' : 'Speaker on'}>
-              {isSpeakerOn ? (
-                <Volume2 size={18} color="#FFFFFF" strokeWidth={2.2} />
-              ) : (
-                <VolumeX size={18} color="#FFFFFF" strokeWidth={2.2} />
-              )}
-            </Pressable>
-
-            <Pressable
-              style={styles.endCallPillBtn}
-              onPress={() =>
-                Alert.alert(
-                  'End Consultation',
-                  'Finish this virtual session and save clinical notes?',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Complete & End',
-                      style: 'destructive',
-                      onPress: () => endCallMut.mutate(),
-                    },
-                  ],
-                )
-              }>
+              style={[styles.endCallPillBtn, isTyping && styles.endCallPillBtnTyping]}
+              onPress={() => setShowEndConfirmModal(true)}>
               <PhoneOff size={15} color="#FFFFFF" strokeWidth={2.4} />
-              {!isCompact && <Text style={styles.endCallPillText}>End</Text>}
+              {!isCompact && !isTyping ? (
+                <Text style={styles.endCallPillText}>End</Text>
+              ) : null}
             </Pressable>
           </View>
         </View>
@@ -590,67 +678,113 @@ export function VideoConsultScreen() {
 
       {/* Clinical Workspace Sheet */}
       <KeyboardAvoidingView
-        style={styles.workspaceSheet}
+        style={[
+          styles.workspaceSheet,
+          workspaceExpanded ? styles.workspaceSheetExpanded : styles.workspaceSheetCollapsed,
+        ]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
-        <View style={styles.sheetHandleRow}>
+        keyboardVerticalOffset={Platform.OS === 'ios' ? topInset : 0}>
+        <Pressable
+          style={styles.sheetHandleRow}
+          onPress={toggleWorkspace}
+          accessibilityRole="button"
+          accessibilityLabel={
+            workspaceExpanded
+              ? 'Collapse clinical workspace'
+              : 'Expand clinical workspace'
+          }>
           <View style={styles.sheetHandle} />
-        </View>
+        </Pressable>
 
-        <View style={styles.sessionStrip}>
+        <Pressable
+          style={styles.sessionStrip}
+          onPress={toggleWorkspace}
+          accessibilityRole="button"
+          accessibilityLabel={
+            workspaceExpanded
+              ? 'Collapse clinical workspace'
+              : 'Expand clinical workspace'
+          }>
           <View style={styles.sessionStripLeft}>
             <View style={styles.sessionLiveDot} />
             <Text style={styles.sessionStripTitle}>Clinical Workspace</Text>
-          </View>
-          <View style={styles.sessionIdPill}>
-            <ShieldCheck size={11} color={colors.primary} strokeWidth={2.4} />
-            <Text style={styles.sessionIdText}>
-              #{String(appointmentId || 'SESSION').slice(-6).toUpperCase()}
+            <Text style={styles.sessionStripHint}>
+              {isTyping
+                ? 'Keyboard open'
+                : workspaceExpanded
+                  ? 'Tap to Close'
+                  : 'Tap to Open'}
             </Text>
           </View>
-        </View>
+          <View style={styles.sessionStripRight}>
+            <View style={styles.sessionIdPill}>
+              <ShieldCheck size={11} color={colors.primary} strokeWidth={2.4} />
+              <Text style={styles.sessionIdText}>
+                #{String(appointmentId || 'SESSION').slice(-6).toUpperCase()}
+              </Text>
+            </View>
+            <View style={styles.workspaceToggleBtn}>
+              {workspaceExpanded ? (
+                <ChevronDown size={18} color={colors.primary} strokeWidth={2.4} />
+              ) : (
+                <ChevronUp size={18} color={colors.primary} strokeWidth={2.4} />
+              )}
+            </View>
+          </View>
+        </Pressable>
 
-        {/* Scrollable workspace tabs */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabsRow}
-          style={styles.tabsScroll}>
-          {WORKSPACE_TABS.map(tab => {
-            const isActive = activeTab === tab.key;
-            const IconComponent = tab.IconComp;
-            return (
-              <Pressable
-                key={tab.key}
-                style={[styles.tabPill, isActive && styles.tabPillActive]}
-                onPress={() => setActiveTab(tab.key)}>
-                <IconComponent
-                  size={14}
-                  color={isActive ? colors.primary : colors.textMuted}
-                  strokeWidth={2.2}
-                />
-                <Text
-                  style={[styles.tabLabelText, isActive && styles.tabLabelTextActive]}
-                  numberOfLines={1}>
-                  {tab.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        {workspaceExpanded ? (
+          <>
+            {/* Scrollable workspace tabs */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tabsRow}
+              style={styles.tabsScroll}
+              keyboardShouldPersistTaps="handled">
+              {WORKSPACE_TABS.map(tab => {
+                const isActive = activeTab === tab.key;
+                const IconComponent = tab.IconComp;
+                return (
+                  <Pressable
+                    key={tab.key}
+                    style={[styles.tabPill, isActive && styles.tabPillActive]}
+                    onPress={() => setActiveTab(tab.key)}>
+                    <IconComponent
+                      size={14}
+                      color={isActive ? colors.primary : colors.textMuted}
+                      strokeWidth={2.2}
+                    />
+                    <Text
+                      style={[styles.tabLabelText, isActive && styles.tabLabelTextActive]}
+                      numberOfLines={1}
+                      ellipsizeMode="clip">
+                      {tab.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
 
-        {/* Dynamic Tab Body */}
-        <ScrollView
-          contentContainerStyle={[
-            styles.tabBodyScroll,
-            { paddingBottom: 100 + Math.max(insets.bottom, 10) },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={true}
-          keyboardDismissMode="interactive"
-          nestedScrollEnabled
-          showsVerticalScrollIndicator={false}
-          contentInsetAdjustmentBehavior="automatic">
+            {/* Dynamic Tab Body */}
+            <ScrollView
+              ref={workspaceScrollRef}
+              style={styles.tabBodyScrollView}
+              contentContainerStyle={[
+                styles.tabBodyScroll,
+                {
+                  paddingBottom:
+                    (isTyping ? 28 : 24) +
+                    Math.max(insets.bottom, 10) +
+                    (isTyping ? 56 : 72),
+                },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              automaticallyAdjustKeyboardInsets
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={false}
+              contentInsetAdjustmentBehavior="automatic">
           {/* TAB 1: Symptoms */}
           {activeTab === 'symptoms' && (
             <View style={styles.tabSection}>
@@ -714,6 +848,7 @@ export function VideoConsultScreen() {
                       onChangeText={setNewSymptomText}
                       autoFocus
                       blurOnSubmit={false}
+                      onFocus={ensureFocusedInputVisible}
                     />
                     <Pressable style={styles.addInlineSaveBtn} onPress={handleAddSymptom}>
                       <Text style={styles.addInlineSaveText}>Add</Text>
@@ -751,6 +886,7 @@ export function VideoConsultScreen() {
                     placeholder="Enter provisional diagnosis…"
                     placeholderTextColor={colors.primaryLight}
                     multiline
+                    onFocus={ensureFocusedInputVisible}
                   />
                 </View>
               </View>
@@ -764,6 +900,7 @@ export function VideoConsultScreen() {
                   onChangeText={setClinicalSummary}
                   placeholder="Examination findings, systems review…"
                   placeholderTextColor={colors.textMuted}
+                  onFocus={ensureFocusedInputVisible}
                 />
               </View>
 
@@ -821,6 +958,7 @@ export function VideoConsultScreen() {
                       value={newTreatmentText}
                       onChangeText={setNewTreatmentText}
                       autoFocus
+                      onFocus={ensureFocusedInputVisible}
                     />
                     <Pressable style={styles.addInlineSaveBtn} onPress={handleAddTreatment}>
                       <Text style={styles.addInlineSaveText}>Add</Text>
@@ -848,6 +986,7 @@ export function VideoConsultScreen() {
                   onChangeText={setPatientEducation}
                   placeholder="Rest, hydration, red-flag symptoms…"
                   placeholderTextColor={colors.textMuted}
+                  onFocus={ensureFocusedInputVisible}
                 />
               </View>
             </View>
@@ -888,6 +1027,7 @@ export function VideoConsultScreen() {
                   onChangeText={setNotes}
                   placeholder="Private clinical notes for this record…"
                   placeholderTextColor={colors.textMuted}
+                  onFocus={ensureFocusedInputVisible}
                 />
               </View>
 
@@ -908,38 +1048,76 @@ export function VideoConsultScreen() {
             </View>
           )}
         </ScrollView>
+          </>
+        ) : null}
 
-        {/* Persistent Bottom Clinical Actions Bar */}
-        <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-          <Pressable
-            style={styles.barSecondaryBtn}
-            onPress={() => setRxModalOpen(true)}>
-            <Pill size={16} color={colors.primary} strokeWidth={2.2} />
-            {!isCompact && <Text style={styles.barSecondaryBtnText}>Rx</Text>}
-          </Pressable>
+        {/* Bottom actions: full clinical bar, or a compact Done bar while typing */}
+        {isTyping ? (
+          <View style={[styles.typingBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+            <View style={styles.typingBarCopy}>
+              <Pencil size={14} color={colors.primary} strokeWidth={2.2} />
+              <View style={styles.typingBarCopyText}>
+                <Text style={styles.typingBarText}>Editing clinical notes</Text>
+                <Text style={styles.typingBarSubText}>Patient stays on video above</Text>
+              </View>
+            </View>
+            <Pressable
+              style={styles.typingDoneBtn}
+              onPress={() => Keyboard.dismiss()}
+              accessibilityRole="button"
+              accessibilityLabel="Done editing">
+              <Check size={16} color="#FFFFFF" strokeWidth={2.4} />
+              <Text style={styles.typingDoneBtnText}>Done</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View
+            style={[
+              styles.bottomBar,
+              styles.bottomBarInline,
+              { paddingBottom: Math.max(insets.bottom, 10) },
+            ]}>
+            <Pressable
+              style={styles.barSecondaryBtn}
+              onPress={() => setRxModalOpen(true)}>
+              <Pill size={16} color={colors.primary} strokeWidth={2.2} />
+              {!isCompact && <Text style={styles.barSecondaryBtnText}>Rx</Text>}
+            </Pressable>
 
-          <Pressable
-            style={styles.barSecondaryBtn}
-            onPress={() => setLabOpen(true)}>
-            <FlaskConical size={16} color={colors.primary} strokeWidth={2.2} />
-            {!isCompact && <Text style={styles.barSecondaryBtnText}>Labs</Text>}
-          </Pressable>
+            <Pressable
+              style={styles.barSecondaryBtn}
+              onPress={() => setLabOpen(true)}>
+              <FlaskConical size={16} color={colors.primary} strokeWidth={2.2} />
+              {!isCompact && <Text style={styles.barSecondaryBtnText}>Labs</Text>}
+            </Pressable>
 
-          <Pressable
-            style={styles.barPrimaryBtn}
-            onPress={() => endCallMut.mutate()}
-            disabled={endCallMut.isPending}>
-            {endCallMut.isPending ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <CheckCircle2 size={16} color="#FFFFFF" strokeWidth={2.2} />
-            )}
-            <Text style={styles.barPrimaryBtnText}>
-              {endCallMut.isPending ? 'Saving…' : 'Complete Visit'}
-            </Text>
-          </Pressable>
-        </View>
+            <Pressable
+              style={styles.barPrimaryBtn}
+              onPress={() => setShowEndConfirmModal(true)}
+              disabled={endCallMut.isPending}>
+              {endCallMut.isPending ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <CheckCircle2 size={16} color="#FFFFFF" strokeWidth={2.2} />
+              )}
+              <Text style={styles.barPrimaryBtnText}>
+                {endCallMut.isPending ? 'Saving…' : 'Complete Visit'}
+              </Text>
+            </Pressable>
+          </View>
+        )}
       </KeyboardAvoidingView>
+
+      {/* Custom Confirmation Prompted Modal: End Consultation */}
+      <EndConsultationModal
+        visible={showEndConfirmModal}
+        onClose={() => setShowEndConfirmModal(false)}
+        onConfirm={() => endCallMut.mutate()}
+        isLoading={endCallMut.isPending}
+        patientName={patientName}
+        duration={formatTime(seconds)}
+        isTeleconsult={true}
+      />
 
       {/* Quick E-Prescription Builder Modal */}
       <Modal
@@ -1137,14 +1315,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: 'rgba(255,255,255,0.35)',
   },
-  videoTopScrim: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 120,
-    backgroundColor: 'rgba(7, 20, 28, 0.55)',
-  },
   videoBottomScrim: {
     position: 'absolute',
     bottom: 0,
@@ -1216,22 +1386,32 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(4, 12, 18, 0.78)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderColor: 'rgba(255,255,255,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   videoPatientMetaCol: {
     flex: 1,
     gap: 4,
-    paddingTop: 2,
+    paddingTop: 6,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+    borderRadius: radius.lg,
+    backgroundColor: 'rgba(4, 12, 18, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    minWidth: 0,
   },
   videoPatientName: {
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: -0.2,
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   videoSubRow: {
     flexDirection: 'row',
@@ -1241,8 +1421,8 @@ const styles = StyleSheet.create({
   },
   videoPatientSub: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.82)',
-    fontWeight: '500',
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '600',
   },
   timerPill: {
     flexDirection: 'row',
@@ -1273,7 +1453,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(0, 109, 114, 0.85)',
+    backgroundColor: 'rgba(0, 109, 114, 0.92)',
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: radius.pill,
@@ -1325,6 +1505,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 10,
   },
+  callControlsFloatingBarTyping: {
+    bottom: 8,
+    left: undefined,
+    right: 12,
+    alignItems: 'flex-end',
+  },
   callControlsGlass: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1336,6 +1522,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
   },
+  callControlsGlassTyping: {
+    gap: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
   controlCircleBtn: {
     width: 42,
     height: 42,
@@ -1343,6 +1534,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 109, 114, 0.95)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  controlCircleBtnTyping: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   controlCircleBtnMuted: {
     backgroundColor: 'rgba(240, 82, 82, 0.9)',
@@ -1358,6 +1554,10 @@ const styles = StyleSheet.create({
     minWidth: 42,
     justifyContent: 'center',
   },
+  endCallPillBtnTyping: {
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+  },
   endCallPillText: {
     fontSize: 12,
     fontWeight: '700',
@@ -1366,13 +1566,20 @@ const styles = StyleSheet.create({
 
   /* Workspace */
   workspaceSheet: {
-    flex: 1,
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,
     marginTop: -16,
     overflow: 'hidden',
     ...shadows.cardElevated,
+  },
+  workspaceSheetExpanded: {
+    flex: 1,
+    minHeight: 0,
+  },
+  workspaceSheetCollapsed: {
+    flexGrow: 0,
+    flexShrink: 0,
   },
   sheetHandleRow: {
     alignItems: 'center',
@@ -1400,6 +1607,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flex: 1,
+    minWidth: 0,
+  },
+  sessionStripHint: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  sessionStripRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
   },
   sessionLiveDot: {
     width: 7,
@@ -1428,9 +1648,19 @@ const styles = StyleSheet.create({
     color: colors.primary,
     letterSpacing: 0.3,
   },
+  workspaceToggleBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.aqua,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   tabsScroll: {
     backgroundColor: colors.surface,
-    maxHeight: 52,
+    maxHeight: 56,
+    flexGrow: 0,
+    flexShrink: 0,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -1440,6 +1670,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 6,
+    flexGrow: 0,
   },
   tabPill: {
     flexDirection: 'row',
@@ -1451,6 +1682,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
+    flexShrink: 0,
   },
   tabPillActive: {
     backgroundColor: colors.aqua,
@@ -1460,15 +1692,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.textMuted,
+    flexShrink: 0,
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
   },
   tabLabelTextActive: {
     color: colors.primary,
     fontWeight: '700',
   },
 
+  tabBodyScrollView: {
+    flex: 1,
+    minHeight: 0,
+  },
   tabBodyScroll: {
     paddingHorizontal: 16,
     paddingTop: 14,
+    flexGrow: 1,
   },
   tabSection: {
     gap: 12,
@@ -1775,10 +2014,6 @@ const styles = StyleSheet.create({
   },
 
   bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: colors.surface,
     borderTopWidth: 1,
     borderTopColor: colors.border,
@@ -1787,7 +2022,60 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 10,
     gap: 8,
+    flexShrink: 0,
     ...shadows.cardElevated,
+  },
+  bottomBarInline: {
+    position: 'relative',
+  },
+  typingBar: {
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    gap: 12,
+    flexShrink: 0,
+    ...shadows.cardElevated,
+  },
+  typingBarCopy: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+  },
+  typingBarCopyText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  typingBarText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  typingBarSubText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: colors.textMuted,
+  },
+  typingDoneBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+  },
+  typingDoneBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   barSecondaryBtn: {
     height: 44,

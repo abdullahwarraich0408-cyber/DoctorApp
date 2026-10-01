@@ -25,7 +25,7 @@ import {
 } from 'lucide-react-native';
 import { doctorPortalApi } from '../../lib/api';
 import { formatDate } from '../../lib/mappers/doctorPortal';
-import GreenGradientHeader from '../../components/GreenGradientHeader';
+import TabScreenHeader from '../../components/TabScreenHeader';
 import { colors, radius, spacing, shadows, TAB_BAR_CLEARANCE } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -82,18 +82,11 @@ export function FollowUpsScreen() {
 
   return (
     <View style={styles.root}>
-      <GreenGradientHeader topInset={topInset}>
-        <View style={styles.headerRow}>
-          <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
-            <ArrowLeft size={22} color="#fff" />
-          </Pressable>
-          <Text style={styles.headerTitle}>Follow-ups</Text>
-          <View style={{ width: 22 }} />
-        </View>
-        <Text style={styles.headerSub}>
-          Recommendations awaiting booking, overdue, or already booked
-        </Text>
-      </GreenGradientHeader>
+      <TabScreenHeader
+        showBack
+        title="Follow-ups"
+        subtitle="Recommendations awaiting booking, overdue, or already booked"
+      />
 
       <View style={styles.tabs}>
         {TABS.map(t => (
