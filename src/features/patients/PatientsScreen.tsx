@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -135,6 +135,17 @@ export function PatientsScreen() {
     return appts.filter((a: any) => a.status === 'confirmed' || a.status === 'pending' || a.status === 'in_progress').length;
   }, [apptsQuery.data]);
 
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await Promise.all([query.refetch(), apptsQuery.refetch()]);
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [query, apptsQuery]);
+
+
   return (
     <View style={styles.root}>
       <TabScreenHeader
@@ -151,11 +162,8 @@ export function PatientsScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={query.isRefetching || apptsQuery.isRefetching}
-            onRefresh={() => {
-              query.refetch();
-              apptsQuery.refetch();
-            }}
+            refreshing={pullRefreshing}
+            onRefresh={onRefresh}
             tintColor={colors.primary}
           />
         }>

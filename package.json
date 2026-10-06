@@ -7,9 +7,9 @@
     "android:dev": "npm run connect:android && react-native run-android --port 8084 --active-arch-only --no-packager",
     "connect:android": "adb reverse tcp:5001 tcp:5001 && adb reverse tcp:5000 tcp:5000 && adb reverse tcp:8084 tcp:8084",
     "start:metro": "react-native start --port 8084",
-    "ios": "react-native run-ios",
+    "ios": "react-native run-ios --port 8084",
     "lint": "eslint .",
-    "start": "react-native start --port 8084",
+    "start": "node api.js && react-native start --port 8084",
     "test": "jest",
     "postinstall": "node scripts/patch-android-cpp-link.js"
   },

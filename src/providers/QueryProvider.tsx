@@ -5,7 +5,11 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
+      // Avoid refetch spinner flashes when switching bottom tabs
+      staleTime: 45_000,
       refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      refetchOnMount: false,
     },
   },
 });
