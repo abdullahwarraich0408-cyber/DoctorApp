@@ -56,3 +56,5 @@ export const shadows = {
 };
 
 export { TAB_BAR_CLEARANCE, getTabBarOccupiedHeight } from './layout';
+
+export { useResponsiveLayout, BREAKPOINTS, scaleByWidth } from './responsive';

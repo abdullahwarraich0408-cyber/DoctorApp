@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -80,6 +80,17 @@ export function FollowUpsScreen() {
     return Array.isArray(rows) ? rows : [];
   }, [query.data]);
 
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await query.refetch();
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [query]);
+
+
   return (
     <View style={styles.root}>
       <TabScreenHeader
@@ -108,12 +119,12 @@ export function FollowUpsScreen() {
         ]}
         refreshControl={
           <RefreshControl
-            refreshing={query.isRefetching}
-            onRefresh={() => query.refetch()}
+            refreshing={pullRefreshing}
+            onRefresh={onRefresh}
             tintColor={colors.primary}
           />
         }>
-        {query.isLoading ? (
+        {query.isLoading && !query.data ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
         ) : items.length === 0 ? (
           <View style={styles.empty}>

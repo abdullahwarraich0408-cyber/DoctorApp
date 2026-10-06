@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -135,6 +135,17 @@ export function AppointmentsScreen() {
     queryFn: () => doctorPortalApi.getAppointments(),
     refetchInterval: 15_000,
   });
+
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await query.refetch();
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [query]);
+
 
   const allAppointments = useMemo(() => {
     const raw = (
@@ -419,8 +430,8 @@ export function AppointmentsScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={query.isRefetching}
-            onRefresh={() => query.refetch()}
+            refreshing={pullRefreshing}
+            onRefresh={onRefresh}
             tintColor={colors.primary}
           />
         }>

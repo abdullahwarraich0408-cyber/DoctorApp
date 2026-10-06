@@ -146,10 +146,18 @@ export function DashboardScreen() {
     },
   });
 
-  const onRefresh = useCallback(() => {
-    profileQuery.refetch();
-    statsQuery.refetch();
-    apptQuery.refetch();
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await Promise.all([
+        profileQuery.refetch(),
+        statsQuery.refetch(),
+        apptQuery.refetch(),
+      ]);
+    } finally {
+      setPullRefreshing(false);
+    }
   }, [profileQuery, statsQuery, apptQuery]);
 
   const appointments = useMemo(
@@ -449,7 +457,7 @@ export function DashboardScreen() {
         automaticallyAdjustKeyboardInsets
         refreshControl={
           <RefreshControl
-            refreshing={apptQuery.isRefetching || statsQuery.isRefetching}
+            refreshing={pullRefreshing}
             onRefresh={onRefresh}
             tintColor={colors.primary}
           />

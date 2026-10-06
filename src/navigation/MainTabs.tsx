@@ -14,7 +14,11 @@ export function MainTabs() {
   return (
     <Tab.Navigator
       tabBar={props => <BottomTabBar {...props} />}
-      screenOptions={{ headerShown: false }}>
+      screenOptions={{
+        headerShown: false,
+        lazy: true,
+        freezeOnBlur: true,
+      }}>
       <Tab.Screen name="Home" component={DashboardScreen} />
       <Tab.Screen name="Appointments" component={AppointmentsScreen} />
       <Tab.Screen name="Consult" component={ConsultTabScreen} />
